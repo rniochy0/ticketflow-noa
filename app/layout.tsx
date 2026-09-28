@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import StyledComponentsRegistry from "@/lib/styled-registry";
+import Providers from "@/components/Providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,17 +15,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TicketFlow",
-  description: "A simple ticketing app built with Next.js",
+  title: "NOA HelpDesk",
+  description: "Central de pedidos de suporte da NOA Óticas",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="ptPT"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      lang="pt-PT"
+      className={`${geistSans.variable} ${geistMono.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <StyledComponentsRegistry>
+          <Providers>{children}</Providers>
+        </StyledComponentsRegistry>
+      </body>
     </html>
   );
 }
