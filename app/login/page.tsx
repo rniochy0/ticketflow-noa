@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useActionState } from "react";
 import styled from "styled-components";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
-import { loginSchema } from "@/lib/validation/auth";
+import { login } from "./actions";
 
 const Page = styled.main`
   min-height: 100dvh;
@@ -32,37 +32,18 @@ const Subtitle = styled.p`
   font-size: ${({ theme }) => theme.fontSizes.sm};
 `;
 
-type FieldErrors = { email?: string; password?: string };
+const ErrorMessage = styled.p`
+  margin: 0;
+  color: ${({ theme }) => theme.colors.danger};
+  font-size: ${({ theme }) => theme.fontSizes.sm};
+`;
+
+const initialState = {
+  error: undefined,
+};
 
 export default function LoginPage() {
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const data = new FormData(e.currentTarget);
-
-    const parsed = loginSchema.safeParse({
-      email: String(data.get("email") ?? "").trim(),
-      password: String(data.get("password") ?? ""),
-    });
-
-    if (!parsed.success) {
-      const fieldErrors: FieldErrors = {};
-      for (const issue of parsed.error.issues) {
-        const key = issue.path[0] as keyof FieldErrors;
-        fieldErrors[key] ??= issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-
-    setErrors({});
-    setLoading(true);
-    // TODO: chamar a Server Action de login (Supabase) quando houver credenciais
-    await new Promise((r) => setTimeout(r, 800));
-    setLoading(false);
-  }
+  const [state, formAction, pending] = useActionState(login, initialState);
 
   return (
     <Page>
@@ -72,23 +53,35 @@ export default function LoginPage() {
           <Subtitle>Entra com a tua conta da empresa</Subtitle>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate style={{ display: "grid", gap: 16 }}>
+        <form
+          action={formAction}
+          noValidate
+          style={{ display: "grid", gap: 16 }}
+        >
           <Input
             label="Email"
             name="email"
             type="email"
             autoComplete="username"
-            error={errors.email}
+            required
           />
+
           <Input
             label="Password"
             name="password"
             type="password"
             autoComplete="current-password"
-            error={errors.password}
+            required
           />
-          <Button type="submit" $fullWidth disabled={loading}>
-            {loading ? "A entrar..." : "Entrar"}
+
+          {state.error && (
+            <ErrorMessage role="alert">
+              {state.error}
+            </ErrorMessage>
+          )}
+
+          <Button type="submit" $fullWidth disabled={pending}>
+            {pending ? "A entrar..." : "Entrar"}
           </Button>
         </form>
       </Panel>

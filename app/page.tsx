@@ -1,15 +1,37 @@
-"use client";
-
+﻿import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { logout } from "./login/actions";
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, role")
+    .eq("id", user!.id)
+    .single();
+
   return (
-    <main style={{ maxWidth: 360, margin: "3rem auto", display: "grid", gap: 16, padding: 16 }}>
-      <Input label="Email" type="email" placeholder="nome@noa.ao" />
-      <Input label="Password" type="password" error="Campo obrigatório" />
-      <Button $fullWidth>Entrar</Button>
-      <Button $variant="secondary" $fullWidth>Cancelar</Button>
+    <main
+      style={{
+        maxWidth: 480,
+        margin: "3rem auto",
+        padding: 16,
+        display: "grid",
+        gap: 12,
+      }}
+    >
+      <h1>NOA HelpDesk</h1>
+      <p>Ola, {profile?.full_name || user?.email}</p>
+      <p>Perfil: {profile?.role}</p>
+      <form action={logout}>
+        <Button type="submit" $variant="secondary">
+          Sair
+        </Button>
+      </form>
     </main>
   );
 }
