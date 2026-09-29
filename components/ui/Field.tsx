@@ -21,16 +21,17 @@ export const FieldError = styled.span`
 `;
 
 // Estilo base partilhado por qualquer control de formulário (input, select, textarea).
-// Cada um continua a usar a sua própria tag styled (<input>/<select>/<textarea>) —
-// só a aparência é partilhada, para não repetir isto em cada ficheiro.
-export const fieldControlCss = css<{ $hasError?: boolean }>`
+// Sem generic fixo em css<T>(): assim o TS não tenta unificar os tipos de props
+// de <input>, <select> e <textarea>, que são diferentes entre si.
+export const fieldControlCss = css`
   min-height: 44px;
   padding: 0 ${({ theme }) => theme.spacing.md};
   font-size: 16px; /* 16px evita o zoom automático do iOS ao focar */
   border-radius: ${({ theme }) => theme.radius.md};
   border: 1px solid
-    ${({ theme, $hasError }) =>
-      $hasError ? theme.colors.danger : theme.colors.border};
+    ${(props) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (props as any).$hasError ? props.theme.colors.danger : props.theme.colors.border};
   background: ${({ theme }) => theme.colors.surface};
 
   &:focus {

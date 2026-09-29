@@ -1,9 +1,8 @@
-"use client";
+﻿"use client";
 
 import styled from "styled-components";
 
-// Empilhamento vertical com espaçamento do theme — evita repetir
-// display:grid/flex + gap em cada página que precisa de uma lista/coluna
+// Empilhamento vertical com espaçamento do theme
 export const Stack = styled.div<{ $gap?: "xs" | "sm" | "md" | "lg" }>`
   display: grid;
   gap: ${({ theme, $gap = "sm" }) => theme.spacing[$gap]};
@@ -15,6 +14,13 @@ export const Inline = styled.div<{ $gap?: "xs" | "sm" | "md" | "lg" }>`
   align-items: center;
   flex-wrap: wrap;
   gap: ${({ theme, $gap = "sm" }) => theme.spacing[$gap]};
+`;
+
+// Grelha responsiva para cartões (dashboard de KPIs, etc.)
+export const CardGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: ${({ theme }) => theme.spacing.md};
 `;
 
 export const MutedText = styled.p`
