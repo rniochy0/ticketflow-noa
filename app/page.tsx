@@ -1,4 +1,4 @@
-﻿import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/Button";
 import { logout } from "./login/actions";
 
@@ -25,7 +25,7 @@ export default async function Home() {
       }}
     >
       <h1>NOA HelpDesk</h1>
-      <p>Ola, {profile?.full_name || user?.email}</p>
+      <p>Olá, {profile?.full_name || user?.email}</p>
       <p>Perfil: {profile?.role}</p>
       <form action={logout}>
         <Button type="submit" $variant="secondary">
