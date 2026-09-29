@@ -1,37 +1,34 @@
-import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
+import { requireUser } from "@/lib/auth/session";
+import { can } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/Button";
+import { PageContainer, PageTitle } from "@/components/layout/PageContainer";
+import { Stack, Inline, MutedText } from "@/components/layout/Stack";
 import { logout } from "./login/actions";
 
 export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, role")
-    .eq("id", user!.id)
-    .single();
+  const user = await requireUser();
 
   return (
-    <main
-      style={{
-        maxWidth: 480,
-        margin: "3rem auto",
-        padding: 16,
-        display: "grid",
-        gap: 12,
-      }}
-    >
-      <h1>NOA HelpDesk</h1>
-      <p>Olá, {profile?.full_name || user?.email}</p>
-      <p>Perfil: {profile?.role}</p>
+    <PageContainer $size="sm">
+      <PageTitle>NOA HelpDesk</PageTitle>
+      <Stack $gap="xs">
+        <p style={{ margin: 0 }}>Ola, {user.fullName || user.email}</p>
+        <MutedText>Perfil: {user.role}</MutedText>
+      </Stack>
+
+      <Inline as="nav" $gap="md">
+        {can(user.role, "ticket:create") && <Link href="/tickets/new">Novo pedido</Link>}
+        {can(user.role, "ticket:create") && <Link href="/tickets">Meus pedidos</Link>}
+        {can(user.role, "ticket:view_all") && <Link href="/it">Central do IT</Link>}
+        {can(user.role, "admin:manage") && <Link href="/admin">Administracao</Link>}
+      </Inline>
+
       <form action={logout}>
         <Button type="submit" $variant="secondary">
           Sair
         </Button>
       </form>
-    </main>
+    </PageContainer>
   );
 }
