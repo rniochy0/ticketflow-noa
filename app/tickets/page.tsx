@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { PageContainer, PageTitle } from "@/components/layout/PageContainer";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { TicketList } from "@/components/tickets/TicketList";
 
 const PAGE_SIZE = 20;
@@ -32,7 +33,7 @@ export default async function MyTicketsPage({
 
   return (
     <PageContainer $size="lg">
-      <PageTitle>Meus pedidos</PageTitle>
+      <PageHeader title="Meus pedidos" backHref="/" />
       <TicketList
         tickets={tickets ?? []}
         page={page}

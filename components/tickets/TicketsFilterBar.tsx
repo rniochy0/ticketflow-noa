@@ -61,7 +61,7 @@ export function TicketsFilterBar({
         />
       </div>
       <FilterSelect name="status" label="Estado" options={statusOptions} defaultValue={current.status} />
-      <FilterSelect name="storeId" label="Loja" options={stores} defaultValue={current.storeId} />
+      <FilterSelect name="storeId" label="Site" options={stores} defaultValue={current.storeId} />
       <FilterSelect name="categoryId" label="Categoria" options={categories} defaultValue={current.categoryId} />
       <FilterSelect name="priority" label="Prioridade" options={priorityOptions} defaultValue={current.priority} />
       <Button type="submit" $variant="secondary">Filtrar</Button>

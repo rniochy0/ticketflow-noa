@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/Card";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Stack, MutedText } from "@/components/layout/Stack";
+import { BackLink } from "@/components/ui/BackLink";
 import { TicketHeader } from "@/components/tickets/TicketHeader";
 import type { TicketStatus } from "@/components/ui/Badge";
 
@@ -47,6 +48,7 @@ export default async function TicketDetailPage({
 
   return (
     <PageContainer>
+      <BackLink href="/tickets" label="Meus pedidos" />
       <Card>
         <Stack $gap="sm">
           <TicketHeader number={ticket.number} status={ticket.status as TicketStatus} />

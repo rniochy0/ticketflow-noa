@@ -1,6 +1,7 @@
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { PageContainer, PageTitle } from "@/components/layout/PageContainer";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { NewTicketForm } from "@/components/tickets/NewTicketForm";
 
 export default async function NewTicketPage() {
@@ -22,7 +23,7 @@ export default async function NewTicketPage() {
 
   return (
     <PageContainer $size="sm">
-      <PageTitle>Novo pedido</PageTitle>
+      <PageHeader title="Novo pedido" backHref="/" />
       <NewTicketForm
         categories={categories ?? []}
         subcategories={subcategories ?? []}

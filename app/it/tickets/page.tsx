@@ -1,6 +1,7 @@
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { PageContainer, PageTitle } from "@/components/layout/PageContainer";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Stack, Inline, MutedText } from "@/components/layout/Stack";
 import { Button } from "@/components/ui/Button";
 import { TicketsFilterBar } from "@/components/tickets/TicketsFilterBar";
@@ -112,7 +113,7 @@ export default async function AllTicketsPage({
 
   return (
     <PageContainer $size="lg">
-      <PageTitle>Todos os tickets</PageTitle>
+      <PageHeader title="Todos os tickets" backHref="/it" />
 
       <TicketsFilterBar
         stores={storeOptions}

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { PageContainer, PageTitle } from "@/components/layout/PageContainer";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { CardGrid } from "@/components/layout/Stack";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
@@ -19,7 +20,6 @@ export default async function ItHome() {
   await requirePermission("ticket:view_all");
   const supabase = await createClient();
 
-  // Uma query "count-only" por estado (head: true não traz linhas, só a contagem)
   const countsPromise = Promise.all(
     STATUSES.map((status) =>
       supabase
@@ -36,7 +36,7 @@ export default async function ItHome() {
 
   return (
     <PageContainer $size="lg">
-      <PageTitle>Central do IT</PageTitle>
+      <PageHeader title="Central do IT" backHref="/" />
 
       <CardGrid>
         {STATUSES.map((status, i) => (

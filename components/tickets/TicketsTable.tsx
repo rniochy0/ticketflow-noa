@@ -4,32 +4,7 @@ import Link from "next/link";
 import styled from "styled-components";
 import { StatusBadge, type TicketStatus } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-
-const ScrollArea = styled.div`
-  overflow-x: auto;
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radius.md};
-`;
-
-const Table = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: ${({ theme }) => theme.fontSizes.sm};
-  white-space: nowrap;
-`;
-
-const Th = styled.th`
-  text-align: left;
-  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
-  background: ${({ theme }) => theme.colors.background};
-  border-bottom: 1px solid ${({ theme }) => theme.colors.border};
-  font-weight: 600;
-`;
-
-const Td = styled.td`
-  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
-  border-bottom: 1px solid ${({ theme }) => theme.colors.border};
-`;
+import { ScrollArea, Table, Th, Td } from "@/components/ui/Table";
 
 const RowLink = styled(Link)`
   color: inherit;
@@ -80,7 +55,7 @@ export function TicketsTable({ tickets }: { tickets: TicketTableRow[] }) {
             <Th>Nº</Th>
             <Th>Título</Th>
             <Th>Solicitante</Th>
-            <Th>Loja</Th>
+            <Th>Site</Th>
             <Th>Categoria</Th>
             <Th>Prioridade</Th>
             <Th>Estado</Th>
