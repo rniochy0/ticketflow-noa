@@ -25,7 +25,7 @@ export function FilterSelect({
   defaultValue?: string;
 }) {
   return (
-    <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+    <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
       <span style={{ fontWeight: 600 }}>{label}</span>
       <StyledSelect name={name} defaultValue={defaultValue ?? ""}>
         <option value="">Todos</option>
