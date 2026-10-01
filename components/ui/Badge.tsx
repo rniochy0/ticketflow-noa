@@ -9,7 +9,9 @@ export type TicketStatus =
   | "RESOLVED"
   | "CLOSED";
 
-const labels: Record<TicketStatus, string> = {
+// Exportado para ser reutilizado onde quer que precisemos do texto do estado
+// (painel de atendimento, filtros, etc.) em vez de repetir este mapa.
+export const statusLabels: Record<TicketStatus, string> = {
   OPEN: "Aberto",
   IN_PROGRESS: "Em atendimento",
   WAITING_USER: "Aguarda resposta",
@@ -29,5 +31,5 @@ const Pill = styled.span<{ $status: TicketStatus }>`
 `;
 
 export function StatusBadge({ status }: { status: TicketStatus }) {
-  return <Pill $status={status}>{labels[status]}</Pill>;
+  return <Pill $status={status}>{statusLabels[status]}</Pill>;
 }
