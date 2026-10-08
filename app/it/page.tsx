@@ -5,16 +5,11 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CardGrid } from "@/components/layout/Stack";
 import { StatCard } from "@/components/ui/StatCard";
+import { statusPluralLabels } from "@/lib/tickets/labels";
 import { Button } from "@/components/ui/Button";
 
 const STATUSES = ["OPEN", "IN_PROGRESS", "WAITING_USER", "RESOLVED"] as const;
 
-const statusLabels: Record<(typeof STATUSES)[number], string> = {
-  OPEN: "Abertos",
-  IN_PROGRESS: "Em atendimento",
-  WAITING_USER: "Aguardando",
-  RESOLVED: "Resolvidos",
-};
 
 export default async function ItHome() {
   await requirePermission("ticket:view_all");
@@ -42,7 +37,7 @@ export default async function ItHome() {
         {STATUSES.map((status, i) => (
           <StatCard
             key={status}
-            label={statusLabels[status]}
+            label={statusPluralLabels[status]}
             value={counts[i].count ?? 0}
           />
         ))}

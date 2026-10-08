@@ -21,6 +21,7 @@ export default async function Home() {
         {can(user.role, "ticket:create") && <Link href="/tickets/new">Novo pedido</Link>}
         {can(user.role, "ticket:create") && <Link href="/tickets">Meus pedidos</Link>}
         {can(user.role, "ticket:view_all") && <Link href="/it">Central do IT</Link>}
+        {can(user.role, "dashboard:view") && <Link href="/dashboard">Dashboard</Link>}
         {can(user.role, "admin:manage") && <Link href="/admin">Administracao</Link>}
       </Inline>
 

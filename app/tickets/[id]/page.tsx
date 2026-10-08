@@ -121,7 +121,12 @@ export default async function TicketDetailPage({
       )}
 
       <Card>
-        <TicketMessages ticketId={ticket.id} messages={messages} canReply={canReply} />
+        <TicketMessages
+          ticketId={ticket.id}
+          messages={messages}
+          canReply={canReply}
+          currentUserName={user.fullName || user.email}
+        />
       </Card>
     </PageContainer>
   );
