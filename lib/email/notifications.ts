@@ -37,7 +37,10 @@ function wrapper(heading: string, bodyHtml: string, ticket: TicketRef) {
 
 async function send(to: string | string[], subject: string, html: string) {
   const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
-  if (recipients.length === 0) return;
+  if (recipients.length === 0) {
+    console.warn("[email] sem destinatários — email não enviado:", subject);
+    return;
+  }
 
   if (!resend) {
     console.warn("[email] RESEND_API_KEY não definido — email não enviado:", subject);
@@ -45,7 +48,23 @@ async function send(to: string | string[], subject: string, html: string) {
   }
 
   try {
-    await resend.emails.send({ from: EMAIL_FROM, to: recipients, subject, html });
+    const { data, error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: recipients,
+      subject,
+      html,
+    });
+
+    if (error) {
+      console.error("[email] Resend recusou o envio:", { subject, error });
+      return;
+    }
+
+    console.info("[email] aceite pelo Resend:", {
+      subject,
+      recipientCount: recipients.length,
+      emailId: data?.id,
+    });
   } catch (err) {
     // Uma falha no envio de email nunca deve rebentar a acção principal
     // (criar ticket, responder, mudar estado) — só fica registada aqui.

@@ -93,11 +93,17 @@ export async function createTicket(
 
   // Notifica toda a equipa de IT activa — ainda não há responsável definido,
   // por isso é a fila toda a saber que há um pedido novo por assumir.
-  const { data: itStaff } = await supabase
+  const { data: itStaff, error: itStaffError } = await supabase
     .from("profiles")
     .select("email")
     .in("role", ["TECHNICIAN", "ADMIN"])
     .eq("is_active", true);
+
+  if (itStaffError) {
+    console.error("[email] falha ao consultar equipa IT:", itStaffError);
+  } else if (!itStaff?.length) {
+    console.warn("[email] nenhum técnico/admin ativo para receber o novo ticket:", ticket.number);
+  }
 
   await notifyNewTicket(
     ticket,
