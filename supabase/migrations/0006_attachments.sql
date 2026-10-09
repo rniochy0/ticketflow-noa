@@ -3,10 +3,7 @@
 -- Princípios:
 --  * Bucket PRIVADO: nenhum ficheiro tem URL público. O acesso passa sempre
 --    por uma rota da app que verifica a sessão e gera um URL assinado de 60s.
---  * Imutável: sem UPDATE/DELETE para utilizadores. Um anexo é evidência do
---    estado do problema naquele momento, tal como as mensagens.
---  * Limites na BD e no bucket (não só na UI): tamanho, tipos, nº de anexos.
---  * Autorização em duas camadas: RLS na tabela E nas policies de Storage.
+
 
 -- Uma mensagem só pode ter anexos do seu próprio ticket (FK composta abaixo)
 alter table public.ticket_messages
@@ -22,8 +19,6 @@ create table public.ticket_attachments (
   mime_type text not null
     check (mime_type in ('image/jpeg', 'image/png', 'image/webp', 'application/pdf')),
   size_bytes integer not null check (size_bytes > 0 and size_bytes <= 4194304),
-  created_at timestamptz not null default now(),
-  -- O ficheiro vive sempre na "pasta" do seu ticket (a policy de Storage depende disto)
   check (starts_with(storage_path, ticket_id::text || '/')),
   -- message_id nulo = anexo do pedido em si (não de uma mensagem)
   foreign key (message_id, ticket_id)
@@ -90,7 +85,6 @@ create policy "attachments_insert" on public.ticket_attachments
       )
     )
   );
--- Sem policies de UPDATE/DELETE: anexos são imutáveis
 
 revoke all on public.ticket_attachments from anon;
 revoke update, delete on public.ticket_attachments from authenticated;
@@ -103,9 +97,6 @@ create trigger broadcast_ticket_attachment
   for each row execute function public.broadcast_ticket_message();
 
 -- ============ STORAGE ============
--- Privado, com limites e tipos permitidos também ao nível do bucket
--- (o Storage valida o content-type do pedido; a validação por "magic bytes"
--- do conteúdo real é feita na Server Action).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'ticket-attachments',
@@ -141,11 +132,7 @@ create policy "ticket_attachments_upload" on storage.objects
         and (t.requester_id = (select auth.uid()) or (select public.is_agent()))
     )
   );
--- Sem policies de UPDATE/DELETE em storage.objects: não se sobrepõe nem se apaga.
---
--- Nota: se um upload for bem sucedido mas o registo na tabela falhar, fica um
--- ficheiro "órfão" (invisível, porque o acesso exige a linha na tabela).
--- Para o admin listar órfãos:
+
 --   select o.name from storage.objects o
 --   where o.bucket_id = 'ticket-attachments'
 --     and not exists (select 1 from public.ticket_attachments a where a.storage_path = o.name);

@@ -1,13 +1,16 @@
 "use client";
 
-import { useActionState, useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import styled from "styled-components";
 import { Button } from "@/components/ui/Button";
 import { FieldError, fieldControlCss } from "@/components/ui/Field";
 import { Stack, MutedText } from "@/components/layout/Stack";
+import { AttachmentPicker } from "@/components/tickets/AttachmentPicker";
+import { AttachmentList, type AttachmentRow } from "@/components/tickets/AttachmentList";
 import { createClient } from "@/lib/supabase/client";
-import { addMessage, type AddMessageState } from "@/app/tickets/actions";
+import { uploadFiles } from "@/lib/attachments/client";
+import { addMessage } from "@/app/tickets/actions";
 
 export type MessageRow = {
   id: string;
@@ -15,6 +18,7 @@ export type MessageRow = {
   created_at: string;
   authorName: string;
   isOwn: boolean;
+  attachments: AttachmentRow[];
 };
 
 const Thread = styled.div`
@@ -37,7 +41,7 @@ const Bubble = styled.div<{ $isOwn: boolean }>`
   border: 1px solid ${({ theme, $isOwn }) => ($isOwn ? "transparent" : theme.colors.border)};
 `;
 
-const BubbleMeta = styled.div<{ $isOwn: boolean }>`
+const BubbleMeta = styled.div`
   font-size: ${({ theme }) => theme.fontSizes.xs};
   opacity: 0.8;
   margin-bottom: 2px;
@@ -79,6 +83,7 @@ function formatTime(iso: string) {
 
 const TYPING_BROADCAST_INTERVAL = 2000; // não enviar a cada tecla, só de 2 em 2s
 const TYPING_EXPIRES_AFTER = 4000; // esconde "a escrever" se não chegar outro sinal
+const REFRESH_DEBOUNCE = 400; // junta mensagem + anexos num só refresh
 
 export function TicketMessages({
   ticketId,
@@ -91,16 +96,21 @@ export function TicketMessages({
   canReply: boolean;
   currentUserName: string;
 }) {
-  const [state, formAction, pending] = useActionState<AddMessageState, FormData>(
-    addMessage,
-    {}
-  );
-  const formRef = useRef<HTMLFormElement>(null);
-  const threadEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
+  // Preenchido quando a mensagem foi enviada mas alguns anexos falharam:
+  // permite reenviar SÓ os anexos, para a mesma mensagem.
+  const [retry, setRetry] = useState<{ messageId: string } | null>(null);
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftKey = `noa-helpdesk:draft:${ticketId}`;
+  const threadEndRef = useRef<HTMLDivElement>(null);
   const [typingName, setTypingName] = useState<string | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTypingRef = useRef(0);
 
   // Canal privado por ticket: a autorização (quem pode entrar) é decidida
@@ -122,9 +132,10 @@ export function TicketMessages({
       const channel = supabase
         .channel(`ticket:${ticketId}`, { config: { private: true } })
         .on("broadcast", { event: "INSERT" }, () => {
-          // Não confiamos no conteúdo do payload para renderizar a mensagem —
-          // voltamos a pedir os dados ao servidor, que já passa por RLS.
-          router.refresh();
+          // Chega para mensagens e para anexos. Não confiamos no conteúdo do
+          // payload: voltamos a pedir os dados ao servidor, já filtrados por RLS.
+          if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = setTimeout(() => router.refresh(), REFRESH_DEBOUNCE);
         })
         .on("broadcast", { event: "typing" }, ({ payload }) => {
           if (payload?.name && payload.name !== currentUserName) {
@@ -144,6 +155,7 @@ export function TicketMessages({
     return () => {
       active = false;
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,14 +172,107 @@ export function TicketMessages({
     });
   }, [currentUserName]);
 
-  // Limpa o campo depois de um envio bem sucedido (sem erro)
-  useEffect(() => {
-    if (!pending && !state.error) formRef.current?.reset();
-  }, [pending, state.error]);
-
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
+
+  // Rascunho por pedido: se a ligação cair e a página recarregar, o texto volta.
+  // sessionStorage (e não localStorage): desaparece ao fechar o separador, o que
+  // importa em computadores partilhados. É apagado assim que a mensagem sai.
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(draftKey);
+      const field = textareaRef.current;
+      if (saved && field && !field.value) field.value = saved;
+    } catch {
+      // armazenamento indisponível (modo privado): segue sem rascunho
+    }
+  }, [draftKey]);
+
+  function saveDraft(text: string) {
+    try {
+      if (text) sessionStorage.setItem(draftKey, text);
+      else sessionStorage.removeItem(draftKey);
+    } catch {
+      // ignora
+    }
+  }
+
+  async function sendAttachments(messageId: string, toSend: File[]) {
+    const outcome = await uploadFiles({
+      ticketId,
+      messageId,
+      files: toSend,
+      onProgress: (current, total) => setProgress(`A enviar anexos (${current}/${total})...`),
+    });
+    setProgress(null);
+
+    if (outcome.failedFiles.length > 0) {
+      // A mensagem JÁ foi enviada: guardamos só os anexos que falharam para reenvio
+      setFiles(outcome.failedFiles);
+      setRetry({ messageId });
+      setError(
+        `A mensagem foi enviada, mas ${outcome.failedFiles.length} anexo(s) falharam: ${
+          outcome.firstError ?? "erro desconhecido"
+        }`
+      );
+    } else {
+      setFiles([]);
+      setRetry(null);
+    }
+    router.refresh();
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget; // capturar antes de qualquer await
+    const formData = new FormData(form);
+    setError(null);
+
+    startTransition(async () => {
+      // 1) a mensagem (só texto). Qualquer falha deixa o texto no campo.
+      let messageId: string | undefined;
+      try {
+        const result = await addMessage({}, formData);
+        if (result.error || !result.messageId) {
+          setError(result.error ?? "Não foi possível enviar a mensagem.");
+          return;
+        }
+        messageId = result.messageId;
+      } catch {
+        // Sem rede / servidor inacessível: sem este catch o React mostraria
+        // uma página de erro e o texto escrito perdia-se.
+        setError(
+          "Sem ligação ao servidor. A mensagem não foi enviada — o texto continua aqui, tenta de novo."
+        );
+        return;
+      }
+
+      form.reset();
+      saveDraft("");
+
+      // 2) os anexos, ligados a essa mensagem
+      if (files.length > 0) {
+        await sendAttachments(messageId, files);
+      } else {
+        router.refresh();
+      }
+    });
+  }
+
+  function handleRetryAttachments() {
+    if (!retry) return;
+    setError(null);
+    startTransition(async () => {
+      await sendAttachments(retry.messageId, files);
+    });
+  }
+
+  function discardRetry() {
+    setRetry(null);
+    setFiles([]);
+    setError(null);
+  }
 
   return (
     <Stack $gap="sm">
@@ -179,10 +284,11 @@ export function TicketMessages({
         <Thread>
           {messages.map((m) => (
             <Bubble key={m.id} $isOwn={m.isOwn}>
-              <BubbleMeta $isOwn={m.isOwn}>
+              <BubbleMeta>
                 {m.authorName} · {formatTime(m.created_at)}
               </BubbleMeta>
               <BubbleBody>{m.body}</BubbleBody>
+              <AttachmentList items={m.attachments} />
             </Bubble>
           ))}
           <div ref={threadEndRef} />
@@ -193,19 +299,43 @@ export function TicketMessages({
         {typingName ? `${typingName} está a escrever...` : ""}
       </TypingRow>
 
-      {canReply ? (
-        <form ref={formRef} action={formAction} style={{ display: "grid", gap: 8 }}>
-          <input type="hidden" name="ticketId" value={ticketId} />
+      {canReply && retry ? (
+        // Modo "reenviar anexos": a mensagem já saiu, falta só alguns ficheiros
+        <div style={{ display: "grid", gap: 8 }}>
+          <AttachmentPicker files={files} onChange={setFiles} disabled={pending} />
+          {error && <FieldError role="alert">{error}</FieldError>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <Button type="button" $variant="secondary" onClick={discardRetry} disabled={pending}>
+              Descartar anexos
+            </Button>
+            <Button
+              type="button"
+              onClick={handleRetryAttachments}
+              disabled={pending || files.length === 0}
+            >
+              {pending ? (progress ?? "A enviar...") : "Reenviar anexos"}
+            </Button>
+          </div>
+        </div>
+      ) : canReply ? (
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 8 }}>
           <TextArea
+            ref={textareaRef}
             name="body"
             placeholder="Escreve uma mensagem..."
             maxLength={5000}
             required
-            onChange={handleTyping}
+            onChange={(e) => {
+              handleTyping();
+              saveDraft(e.target.value);
+            }}
+            disabled={pending}
           />
-          {state.error && <FieldError role="alert">{state.error}</FieldError>}
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <AttachmentPicker files={files} onChange={setFiles} disabled={pending} />
+          {error && <FieldError role="alert">{error}</FieldError>}
           <Button type="submit" disabled={pending} style={{ justifySelf: "end" }}>
-            {pending ? "A enviar..." : "Enviar"}
+            {pending ? (progress ?? "A enviar...") : error ? "Tentar de novo" : "Enviar"}
           </Button>
         </form>
       ) : (

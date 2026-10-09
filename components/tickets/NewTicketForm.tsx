@@ -1,13 +1,21 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import styled from "styled-components";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Card } from "@/components/ui/Card";
-import { FieldWrapper, FieldLabel, FieldError, fieldControlCss } from "@/components/ui/Field";
-import { createTicket, type CreateTicketState } from "@/app/tickets/actions";
+import {
+  FieldWrapper,
+  FieldLabel,
+  FieldError,
+  fieldControlCss,
+} from "@/components/ui/Field";
+import { AttachmentPicker } from "@/components/tickets/AttachmentPicker";
+import { uploadFiles } from "@/lib/attachments/client";
+import { createTicket } from "@/app/tickets/actions";
 
 const Form = styled.form`
   display: grid;
@@ -48,11 +56,13 @@ export function NewTicketForm({
   categories: CategoryRow[];
   subcategories: SubcategoryRow[];
 }) {
-  const [state, formAction, pending] = useActionState<
-    CreateTicketState,
-    FormData
-  >(createTicket, {});
-
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<File[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("");
 
   const filteredSubcategories = useMemo(
@@ -60,17 +70,65 @@ export function NewTicketForm({
     [subcategories, categoryId]
   );
 
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    setError(null);
+    setFieldErrors({});
+
+    startTransition(async () => {
+      // 1) cria o pedido (só texto). Se a rede falhar, os campos mantêm-se.
+      let result: Awaited<ReturnType<typeof createTicket>>;
+      try {
+        result = await createTicket({}, formData);
+      } catch {
+        setError(
+          "Sem ligação ao servidor. O pedido não foi criado — os dados continuam no formulário, tenta de novo."
+        );
+        return;
+      }
+      if (!result.ticketId) {
+        setError(result.error ?? null);
+        setFieldErrors(result.fieldErrors ?? {});
+        return;
+      }
+
+      // Daqui para a frente o pedido JÁ existe: bloqueia novo envio para
+      // não criar duplicados enquanto os anexos seguem.
+      setDone(true);
+
+      // 2) envia os anexos (se houver) e segue para o pedido
+      let failed = 0;
+      if (files.length > 0) {
+        const outcome = await uploadFiles({
+          ticketId: result.ticketId,
+          files,
+          onProgress: (current, total) =>
+            setProgress(`A enviar anexos (${current}/${total})...`),
+        });
+        failed = outcome.failed;
+      }
+      router.push(
+        failed > 0
+          ? `/tickets/${result.ticketId}?attach=partial`
+          : `/tickets/${result.ticketId}`
+      );
+    });
+  }
+
+  const busy = pending || done;
+
   return (
     <Card>
-      <Form action={formAction} noValidate>
-        {state.error && <ErrorBanner role="alert">{state.error}</ErrorBanner>}
+      <Form onSubmit={handleSubmit} noValidate>
+        {error && <ErrorBanner role="alert">{error}</ErrorBanner>}
 
         <Input
           label="Título"
           name="title"
-          defaultValue={state.values?.title}
-          error={state.fieldErrors?.title}
-          maxLength={150}
+          error={fieldErrors.title}
+          maxLength={150} 
+          disabled={busy}
         />
 
         <FieldWrapper>
@@ -78,12 +136,12 @@ export function NewTicketForm({
           <TextArea
             id="description"
             name="description"
-            defaultValue={state.values?.description}
-            $hasError={!!state.fieldErrors?.description}
+            $hasError={!!fieldErrors.description}
             maxLength={5000}
+            disabled={busy}
           />
-          {state.fieldErrors?.description && (
-            <FieldError role="alert">{state.fieldErrors.description}</FieldError>
+          {fieldErrors.description && (
+            <FieldError role="alert">{fieldErrors.description}</FieldError>
           )}
         </FieldWrapper>
 
@@ -91,8 +149,9 @@ export function NewTicketForm({
           label="Categoria"
           name="categoryId"
           options={categories.map((c) => ({ value: c.id, label: c.name }))}
-          error={state.fieldErrors?.categoryId}
+          error={fieldErrors.categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
+          disabled={busy}
         />
 
         <Select
@@ -100,7 +159,7 @@ export function NewTicketForm({
           name="subcategoryId"
           placeholder="Nenhuma"
           options={filteredSubcategories.map((s) => ({ value: s.id, label: s.name }))}
-          disabled={!categoryId}
+          disabled={busy || filteredSubcategories.length === 0}
         />
 
         <Select
@@ -108,11 +167,14 @@ export function NewTicketForm({
           name="priority"
           options={priorityOptions}
           defaultValue="MEDIUM"
-          error={state.fieldErrors?.priority}
+          error={fieldErrors.priority}
+          disabled={busy}
         />
 
-        <Button type="submit" $fullWidth disabled={pending}>
-          {pending ? "A enviar..." : "Enviar pedido"}
+        <AttachmentPicker files={files} onChange={setFiles} disabled={busy} />
+
+        <Button type="submit" $fullWidth disabled={busy}>
+          {busy ? (progress ?? "A enviar...") : "Enviar pedido"}
         </Button>
       </Form>
     </Card>

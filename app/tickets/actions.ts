@@ -1,10 +1,15 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requirePermission, requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/roles";
+import {
+  notifyNewTicket,
+  notifyAssigned,
+  notifyNewMessage,
+  notifyResolved,
+} from "@/lib/email/notifications";
 import {
   createTicketSchema,
   assignTicketSchema,
@@ -14,6 +19,7 @@ import {
 } from "@/lib/validation/ticket";
 
 export type CreateTicketState = {
+  ticketId?: string;
   values?: { title?: string; description?: string };
   error?: string;
   fieldErrors?: Record<string, string>;
@@ -74,7 +80,7 @@ export async function createTicket(
       priority: parsed.data.priority,
       requester_id: user.id,
     })
-    .select("id")
+    .select("id, number, title")
     .single();
 
   if (error || !ticket) {
@@ -85,8 +91,27 @@ export async function createTicket(
     };
   }
 
+  // Notifica toda a equipa de IT activa — ainda não há responsável definido,
+  // por isso é a fila toda a saber que há um pedido novo por assumir.
+  const { data: itStaff, error: itStaffError } = await supabase
+    .from("profiles")
+    .select("email")
+    .in("role", ["TECHNICIAN", "ADMIN"])
+    .eq("is_active", true);
+
+  if (itStaffError) {
+    console.error("[email] falha ao consultar equipa IT:", itStaffError);
+  } else if (!itStaff?.length) {
+    console.warn("[email] nenhum técnico/admin ativo para receber o novo ticket:", ticket.number);
+  }
+
+  await notifyNewTicket(
+    ticket,
+    (itStaff ?? []).map((p) => p.email)
+  );
+
   revalidatePath("/tickets");
-  redirect(`/tickets/${ticket.id}`);
+  return { ticketId: ticket.id };
 }
 
 // ============ Acções de atendimento (Feature 05.3) ============
@@ -128,7 +153,7 @@ export async function assignTechnician(
   // atribuir a uma conta desactivada ou a um role que não atende (MANAGER).
   const { data: target } = await supabase
     .from("profiles")
-    .select("role, is_active")
+    .select("role, is_active, email")
     .eq("id", parsed.data.technicianId)
     .single();
 
@@ -136,12 +161,17 @@ export async function assignTechnician(
     return { ok: false, error: "O responsável tem de ser um técnico activo." };
   }
 
-  const { error } = await supabase
+  const { data: ticket, error } = await supabase
     .from("tickets")
     .update({ assignee_id: parsed.data.technicianId })
-    .eq("id", parsed.data.ticketId);
+    .eq("id", parsed.data.ticketId)
+    .select("id, number, title")
+    .single();
 
-  if (error) return { ok: false, error: "Não foi possível atribuir o técnico." };
+  if (error || !ticket) return { ok: false, error: "Não foi possível atribuir o técnico." };
+
+  await notifyAssigned(ticket, target.email);
+
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   return { ok: true };
 }
@@ -163,7 +193,7 @@ export async function changeStatus(formData: FormData): Promise<ActionResult> {
   // escrita para algo que sabemos de antemão que vai falhar.
   const { data: ticket } = await supabase
     .from("tickets")
-    .select("status, requester_id")
+    .select("status, requester_id, number, title, requester:profiles!tickets_requester_id_fkey(email)")
     .eq("id", parsed.data.ticketId)
     .single();
 
@@ -191,6 +221,17 @@ export async function changeStatus(formData: FormData): Promise<ActionResult> {
   // corrida entre dois pedidos) — o trigger é sempre a última palavra.
   if (error) return { ok: false, error: "Transição de estado não permitida." };
 
+  if (parsed.data.status === "RESOLVED") {
+    const requesterEmail = (ticket as unknown as { requester: { email: string } | null })
+      .requester?.email;
+    if (requesterEmail) {
+      await notifyResolved(
+        { id: parsed.data.ticketId, number: ticket.number, title: ticket.title },
+        requesterEmail
+      );
+    }
+  }
+
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   revalidatePath("/it");
   return { ok: true };
@@ -216,7 +257,7 @@ export async function changePriority(formData: FormData): Promise<ActionResult> 
   return { ok: true };
 }
 
-export type AddMessageState = { error?: string };
+export type AddMessageState = { error?: string; messageId?: string };
 
 export async function addMessage(
   _prev: AddMessageState,
@@ -233,16 +274,61 @@ export async function addMessage(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("ticket_messages").insert({
-    ticket_id: parsed.data.ticketId,
-    author_id: user.id,
-    body: parsed.data.body,
-  });
+  const { data: inserted, error } = await supabase
+    .from("ticket_messages")
+    .insert({
+      ticket_id: parsed.data.ticketId,
+      author_id: user.id,
+      body: parsed.data.body,
+    })
+    .select("id")
+    .single();
 
   // O RLS de ticket_messages já rejeita mensagens em tickets CLOSED
   // ou de quem não é o solicitante/agente — erro genérico de propósito
-  if (error) return { error: "Não foi possível enviar a mensagem." };
+  if (error || !inserted) return { error: "Não foi possível enviar a mensagem." };
+
+  // Notifica "o outro lado": se quem respondeu foi o colaborador, avisa o
+  // técnico responsável (ou toda a equipa, se ainda não houver um); se foi
+  // a equipa a responder, avisa sempre o colaborador que abriu o pedido.
+  const { data: ticket } = await supabase
+    .from("tickets")
+    .select(
+      `number, title, requester_id, assignee_id,
+       requester:profiles!tickets_requester_id_fkey(email)`
+    )
+    .eq("id", parsed.data.ticketId)
+    .single();
+
+  if (ticket) {
+    const ticketRef = { id: parsed.data.ticketId, number: ticket.number, title: ticket.title };
+    const authorIsRequester = ticket.requester_id === user.id;
+
+    if (authorIsRequester) {
+      if (ticket.assignee_id) {
+        const { data: assignee } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("id", ticket.assignee_id)
+          .single();
+        if (assignee?.email) await notifyNewMessage(ticketRef, assignee.email, user.fullName);
+      } else {
+        const { data: itStaff } = await supabase
+          .from("profiles")
+          .select("email")
+          .in("role", ["TECHNICIAN", "ADMIN"])
+          .eq("is_active", true);
+        for (const p of itStaff ?? []) {
+          await notifyNewMessage(ticketRef, p.email, user.fullName);
+        }
+      }
+    } else {
+      const requesterEmail = (ticket as unknown as { requester: { email: string } | null })
+        .requester?.email;
+      if (requesterEmail) await notifyNewMessage(ticketRef, requesterEmail, user.fullName);
+    }
+  }
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
-  return {};
+  return { messageId: inserted.id };
 }

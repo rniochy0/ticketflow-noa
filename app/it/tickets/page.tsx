@@ -118,10 +118,13 @@ export default async function AllTicketsPage({
       <TicketsFilterBar
         stores={storeOptions}
         categories={categoryOptions}
-        current={{ q, status, storeId, categoryId, priority }}
+        current={{ q, status, storeId, categoryId, priority }} 
       />
 
       <Stack $gap="sm">
+
+        <MutedText>{total ? "pedido encontrado": "pedidos encontrados" }</MutedText>
+
         <MutedText>  {total === 0 
           ? 'Nenhum pedido encontrado' 
           : `${total} ${total === 1 ? 'pedido encontrado' : 'pedidos encontrados'}`

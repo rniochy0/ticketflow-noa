@@ -8,8 +8,8 @@ export default function NotFound() {
         padding: '50px' 
         }
         }>
-      <h2>Página Não Encontrada</h2>
-      <p>Lamentamos, mas a página que procura não existe ou foi movida.</p>
+      <h2>{"Página Não Encontrada"}</h2>
+      <p>{"Lamentamos, mas a página que procura não existe ou foi movida."}</p>
       <Link 
         href="/" 
         style={
@@ -22,9 +22,9 @@ export default function NotFound() {
               padding: '10px 20px',
               borderRadius: '5px',
               backgroundColor: '#f0f0f0' 
-            }}
+
           >
-                Voltar para a Página Inicial
+                {"Voltar para a Página Inicial"}
       </Link>
     </div>
   );
