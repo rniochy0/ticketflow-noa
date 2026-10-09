@@ -30,10 +30,15 @@ export default async function MyTicketsPage({
 
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const ticketCount = tickets?.length ?? 0;
 
   return (
     <PageContainer $size="lg">
-      <PageHeader title="Meus pedidos" backHref="/" />
+      <PageHeader
+        title={`${ticketCount === 1 ? "Meu pedido" : "Meus pedidos"}`}
+        backHref="/"
+      />
+
       <TicketList
         tickets={tickets ?? []}
         page={page}
