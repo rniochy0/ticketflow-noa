@@ -19,6 +19,9 @@ export default async function AdminHome() {
           <Link href="/admin/sites">
             <Button $variant="secondary">Sites</Button>
           </Link>
+          <Link href="/admin/email-test">
+            <Button $variant="secondary">Teste de email</Button>
+          </Link>
         </Inline>
       </Stack>
     </PageContainer>

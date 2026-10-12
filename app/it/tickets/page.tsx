@@ -46,7 +46,14 @@ export default async function AllTicketsPage({
   await requirePermission("ticket:view_all");
   const sp = await searchParams;
 
-  const q = (sp.q ?? "").trim().slice(0, 100);
+  // Dentro de .or() o PostgREST dá significado a , ( ) . : * % " e \ — um texto
+  // como  x%,status.eq.CLOSED  acrescentaria condições ao filtro. Por isso só
+  // deixamos passar letras, números, espaços e hífens (chega para "NOA-00012").
+  const q = (sp.q ?? "")
+    .replace(/[^\p{L}\p{N} -]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
   const status = STATUS_VALUES.includes(sp.status ?? "") ? sp.status : undefined;
   const priority = PRIORITY_VALUES.includes(sp.priority ?? "") ? sp.priority : undefined;
   const storeId = UUID_RE.test(sp.storeId ?? "") ? sp.storeId : undefined;
@@ -74,9 +81,12 @@ export default async function AllTicketsPage({
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  // .ilike com % literais controlados pelo código, nunca concatenação de SQL:
-  // o valor do utilizador vai só como parâmetro do método, nunca para dentro de uma string SQL
-  if (q) query = query.or(`title.ilike.%${q}%,number.ilike.%${q}%`);
+  // O texto livre entra numa string de filtro do PostgREST (.or), onde , ( ) . * %
+  // têm significado próprio: um valor como "x,status.eq.CLOSED" injectaria
+  // condições. Deixamos só letras, números, espaço, hífen e _ (suficiente para
+  // títulos e números NOA-00001) e limitamos o tamanho.
+  const safeQ = (q ?? "").replace(/[^\p{L}\p{N} _-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+  if (safeQ) query = query.or(`title.ilike.%${safeQ}%,number.ilike.%${safeQ}%`);
   if (status) query = query.eq("status", status);
   if (priority) query = query.eq("priority", priority);
   if (storeId) query = query.eq("store_id", storeId);
@@ -122,10 +132,7 @@ export default async function AllTicketsPage({
       />
 
       <Stack $gap="sm">
-        <MutedText>  {total === 0 
-          ? 'Nenhum pedido encontrado' 
-          : `${total} ${total === 1 ? 'pedido encontrado' : 'pedidos encontrados'}`
-         }</MutedText>
+        <MutedText>{total} pedido(s) encontrado(s)</MutedText>
         <TicketsTable tickets={tickets} />
 
         {totalPages > 1 && (
