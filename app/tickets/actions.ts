@@ -91,23 +91,15 @@ export async function createTicket(
     };
   }
 
-  // Notifica toda a equipa de IT activa — ainda não há responsável definido,
-  // por isso é a fila toda a saber que há um pedido novo por assumir.
-  const { data: itStaff, error: itStaffError } = await supabase
-    .from("profiles")
-    .select("email")
-    .in("role", ["TECHNICIAN", "ADMIN"])
-    .eq("is_active", true);
-
-  if (itStaffError) {
-    console.error("[email] falha ao consultar equipa IT:", itStaffError);
-  } else if (!itStaff?.length) {
-    console.warn("[email] nenhum técnico/admin ativo para receber o novo ticket:", ticket.number);
-  }
+  // Notifica toda a equipa de IT activa. Usa uma função SQL (security definer)
+  // porque o RLS não deixa o colaborador ler os perfis do IT directamente.
+  const { data: itStaff } = await supabase.rpc("ticket_staff_emails", {
+    p_ticket_id: ticket.id,
+  });
 
   await notifyNewTicket(
     ticket,
-    (itStaff ?? []).map((p) => p.email)
+    ((itStaff ?? []) as { email: string }[]).map((p) => p.email)
   );
 
   revalidatePath("/tickets");
@@ -306,20 +298,17 @@ export async function addMessage(
 
     if (authorIsRequester) {
       if (ticket.assignee_id) {
-        const { data: assignee } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("id", ticket.assignee_id)
-          .single();
-        if (assignee?.email) await notifyNewMessage(ticketRef, assignee.email, user.fullName);
+        const { data: assigneeEmail } = await supabase.rpc("ticket_assignee_email", {
+          p_ticket_id: parsed.data.ticketId,
+        });
+        if (assigneeEmail) await notifyNewMessage(ticketRef, assigneeEmail as string, user.fullName);
       } else {
-        const { data: itStaff } = await supabase
-          .from("profiles")
-          .select("email")
-          .in("role", ["TECHNICIAN", "ADMIN"])
-          .eq("is_active", true);
-        for (const p of itStaff ?? []) {
-          await notifyNewMessage(ticketRef, p.email, user.fullName);
+        const { data: itStaff } = await supabase.rpc("ticket_staff_emails", {
+          p_ticket_id: parsed.data.ticketId,
+        });
+        const staffEmails = ((itStaff ?? []) as { email: string }[]).map((p) => p.email);
+        if (staffEmails.length > 0) {
+          await notifyNewMessage(ticketRef, staffEmails, user.fullName);
         }
       }
     } else {
