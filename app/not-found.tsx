@@ -22,7 +22,8 @@ export default function NotFound() {
               padding: '10px 20px',
               borderRadius: '5px',
               backgroundColor: '#f0f0f0' 
-
+            }
+          }
           >
                 {"Voltar para a Página Inicial"}
       </Link>
