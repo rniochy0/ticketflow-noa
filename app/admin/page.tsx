@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { requirePermission } from "@/lib/auth/session";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -18,6 +18,12 @@ export default async function AdminHome() {
         <Inline $gap="sm">
           <Link href="/admin/sites">
             <Button $variant="secondary">Sites</Button>
+          </Link>
+          <Link href="/admin/users">
+            <Button $variant="secondary">Utilizadores</Button>
+          </Link>
+          <Link href="/admin/categories">
+            <Button $variant="secondary">Categorias</Button>
           </Link>
           <Link href="/admin/email-test">
             <Button $variant="secondary">Teste de email</Button>
