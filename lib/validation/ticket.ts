@@ -16,6 +16,8 @@ export const createTicketSchema = z.object({
   categoryId: z.uuid("Categoria inválida"),
   subcategoryId: z.uuid("Subcategoria inválida").optional().or(z.literal("")),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
+  // Só para o IT: abrir o pedido em nome de um colaborador. "" = o próprio.
+  requesterId: z.union([z.uuid("Colaborador inválido"), z.literal("")]).optional(),
 });
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;

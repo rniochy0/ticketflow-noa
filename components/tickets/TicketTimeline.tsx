@@ -67,7 +67,9 @@ export function TicketTimeline({
   function describe(e: TimelineEvent) {
     switch (e.type) {
       case "CREATED":
-        return `${who(e.actorId)} abriu o pedido`;
+        return e.toValue
+          ? `${who(e.actorId)} abriu o pedido em nome de ${who(e.toValue)}`
+          : `${who(e.actorId)} abriu o pedido`;
       case "STATUS_CHANGED":
         return `${who(e.actorId)} alterou o estado: ${statusLabel(e.fromValue)} → ${statusLabel(e.toValue)}`;
       case "ASSIGNEE_CHANGED":

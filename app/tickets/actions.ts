@@ -6,6 +6,7 @@ import { requirePermission, requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/roles";
 import {
   notifyNewTicket,
+  notifyOpenedOnBehalf,
   notifyAssigned,
   notifyNewMessage,
   notifyResolved,
@@ -37,6 +38,7 @@ export async function createTicket(
     categoryId: String(formData.get("categoryId") ?? ""),
     subcategoryId: String(formData.get("subcategoryId") ?? ""),
     priority: String(formData.get("priority") ?? ""),
+    requesterId: String(formData.get("requesterId") ?? ""),
   };
 
   const parsed = createTicketSchema.safeParse(raw);
@@ -54,18 +56,37 @@ export async function createTicket(
 
   const supabase = await createClient();
 
-  // A loja vem sempre do perfil do próprio utilizador, nunca do formulário:
-  // impede um colaborador de abrir tickets em nome de outra loja.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("store_id")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile?.store_id) {
+  // Em nome de outro colaborador: só quem atende (TECHNICIAN/ADMIN). Mesmo que
+  // alguém forje o campo, o RLS da BD também recusa para quem não é agente.
+  const onBehalf = parsed.data.requesterId && parsed.data.requesterId !== user.id;
+  if (onBehalf && !can(user.role, "ticket:handle")) {
     return {
       values: { title: raw.title, description: raw.description },
-      error: "A tua conta não tem loja associada. Contacta o administrador.",
+      error: "Não tens permissão para abrir pedidos em nome de outra pessoa.",
+    };
+  }
+  const requesterId = onBehalf ? (parsed.data.requesterId as string) : user.id;
+
+  // A loja vem sempre do perfil do SOLICITANTE, nunca do formulário:
+  // impede abrir tickets em nome de outra loja.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("store_id, is_active")
+    .eq("id", requesterId)
+    .single();
+
+  if (!profile?.is_active) {
+    return {
+      values: { title: raw.title, description: raw.description },
+      error: "Colaborador inválido ou inativo.",
+    };
+  }
+  if (!profile.store_id) {
+    return {
+      values: { title: raw.title, description: raw.description },
+      error: onBehalf
+        ? "Este colaborador não tem site associado. Define-o em Administração → Utilizadores."
+        : "A tua conta não tem loja associada. Contacta o administrador.",
     };
   }
 
@@ -78,7 +99,7 @@ export async function createTicket(
       subcategory_id: parsed.data.subcategoryId || null,
       store_id: profile.store_id,
       priority: parsed.data.priority,
-      requester_id: user.id,
+      requester_id: requesterId,
     })
     .select("id, number, title")
     .single();
@@ -101,6 +122,18 @@ export async function createTicket(
     ticket,
     ((itStaff ?? []) as { email: string }[]).map((p) => p.email)
   );
+
+  if (onBehalf) {
+    // Só o IT chega aqui (verificado acima); o RLS deixa a equipa ler o email
+    const { data: requester } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", requesterId)
+      .single();
+    if (requester?.email) {
+      await notifyOpenedOnBehalf(ticket, requester.email, user.fullName || user.email);
+    }
+  }
 
   revalidatePath("/tickets");
   return { ticketId: ticket.id };
