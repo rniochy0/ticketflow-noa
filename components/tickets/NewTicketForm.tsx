@@ -52,9 +52,12 @@ type SubcategoryRow = { id: string; name: string; category_id: string };
 export function NewTicketForm({
   categories,
   subcategories,
+  requesters,
 }: {
   categories: CategoryRow[];
   subcategories: SubcategoryRow[];
+  // Só é passado ao IT: permite abrir o pedido em nome de um colaborador
+  requesters?: { value: string; label: string }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -123,11 +126,22 @@ export function NewTicketForm({
       <Form onSubmit={handleSubmit} noValidate>
         {error && <ErrorBanner role="alert">{error}</ErrorBanner>}
 
+        {requesters && (
+          <Select
+            label="Em nome de (opcional)"
+            name="requesterId"
+            placeholder="Eu próprio"
+            options={[{ value: "", label: "Eu próprio" }, ...requesters]}
+            defaultValue=""
+            disabled={busy}
+          />
+        )}
+
         <Input
           label="Título"
           name="title"
           error={fieldErrors.title}
-          maxLength={150} 
+          maxLength={150}
           disabled={busy}
         />
 
