@@ -19,6 +19,9 @@ export default async function AdminHome() {
           <Link href="/admin/sites">
             <Button $variant="secondary">Sites</Button>
           </Link>
+          <Link href="/admin/users">
+            <Button $variant="secondary">Utilizadores</Button>
+          </Link>
           <Link href="/admin/categories">
             <Button $variant="secondary">Categorias</Button>
           </Link>

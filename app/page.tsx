@@ -23,6 +23,7 @@ export default async function Home() {
         {can(user.role, "ticket:view_all") && <Link href="/it">Central do IT</Link>}
         {can(user.role, "dashboard:view") && <Link href="/dashboard">Dashboard</Link>}
         {can(user.role, "admin:manage") && <Link href="/admin">Administracao</Link>}
+        <Link href="/conta/password">Alterar password</Link>
       </Inline>
 
       <form action={logout}>

@@ -1,0 +1,137 @@
+"use client";
+
+import Link from "next/link";
+import { useActionState } from "react";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { Stack, Inline, MutedText } from "@/components/layout/Stack";
+import { ROLES } from "@/lib/auth/roles";
+import { roleLabels } from "@/lib/validation/user";
+import type { UserFormState } from "@/app/admin/users/actions";
+
+type Option = { value: string; label: string };
+type Action = (state: UserFormState, formData: FormData) => Promise<UserFormState>;
+
+const roleOptions: Option[] = ROLES.map((r) => ({ value: r, label: roleLabels[r] }));
+
+export type UserFormValues = {
+  email?: string;
+  fullName?: string;
+  role?: string;
+  storeId?: string;
+  departmentId?: string;
+  jobTitle?: string;
+};
+
+export function UserForm({
+  action,
+  mode,
+  initialValues,
+  sites,
+  departments,
+}: {
+  action: Action;
+  mode: "create" | "edit";
+  initialValues?: UserFormValues;
+  sites: Option[];
+  departments: Option[];
+}) {
+  const [state, formAction, pending] = useActionState<UserFormState, FormData>(action, {
+    values: initialValues,
+  });
+  const v = (state.values ?? initialValues ?? {}) as UserFormValues;
+
+  if (state.created) {
+    return (
+      <Card>
+        <Stack $gap="md">
+          <strong>Utilizador criado</strong>
+          <MutedText>Email: {state.created.email}</MutedText>
+          <MutedText>Password temporária (só é mostrada agora, copia-a):</MutedText>
+          <code style={{ fontSize: 18, userSelect: "all" }}>{state.created.tempPassword}</code>
+          <MutedText>
+            Entrega-a ao colaborador por um canal seguro e pede-lhe que a altere em
+            “Alterar password” no primeiro acesso.
+          </MutedText>
+          <Inline $gap="sm">
+            <Link href="/admin/users/new">
+              <Button $variant="secondary">Criar outro</Button>
+            </Link>
+            <Link href="/admin/users">
+              <Button>Ver utilizadores</Button>
+            </Link>
+          </Inline>
+        </Stack>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <form action={formAction} noValidate style={{ display: "grid", gap: 16 }}>
+        {state.error && (
+          <p style={{ margin: 0, color: "#dc2626", fontSize: 14 }} role="alert">
+            {state.error}
+          </p>
+        )}
+
+        {mode === "create" ? (
+          <Input
+            label="Email"
+            name="email"
+            type="email"
+            autoComplete="off"
+            defaultValue={v.email}
+            error={state.fieldErrors?.email}
+          />
+        ) : (
+          <MutedText>Email: {v.email}</MutedText>
+        )}
+
+        <Input
+          label="Nome completo"
+          name="fullName"
+          defaultValue={v.fullName}
+          error={state.fieldErrors?.fullName}
+          maxLength={120}
+        />
+        <Select
+          label="Perfil"
+          name="role"
+          options={roleOptions}
+          defaultValue={v.role || "COLLABORATOR"}
+          error={state.fieldErrors?.role}
+        />
+        <Select
+          label="Site"
+          name="storeId"
+          options={[{ value: "", label: "Sem site" }, ...sites]}
+          defaultValue={v.storeId ?? ""}
+          error={state.fieldErrors?.storeId}
+        />
+        {departments.length > 0 && (
+          <Select
+            label="Departamento"
+            name="departmentId"
+            options={[{ value: "", label: "Sem departamento" }, ...departments]}
+            defaultValue={v.departmentId ?? ""}
+            error={state.fieldErrors?.departmentId}
+          />
+        )}
+        <Input
+          label="Função"
+          name="jobTitle"
+          defaultValue={v.jobTitle}
+          error={state.fieldErrors?.jobTitle}
+          maxLength={100}
+        />
+
+        <Button type="submit" disabled={pending}>
+          {pending ? "A guardar..." : mode === "create" ? "Criar utilizador" : "Guardar"}
+        </Button>
+      </form>
+    </Card>
+  );
+}
