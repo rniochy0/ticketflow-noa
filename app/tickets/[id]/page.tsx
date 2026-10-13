@@ -9,6 +9,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { TicketHeader } from "@/components/tickets/TicketHeader";
 import { TicketMessages, type MessageRow } from "@/components/tickets/TicketMessages";
 import { AttachmentList, type AttachmentRow } from "@/components/tickets/AttachmentList";
+import { TicketTimeline, type TimelineEvent } from "@/components/tickets/TicketTimeline";
 import { StaffActionsPanel, RequesterCloseAction } from "@/components/tickets/TicketActions";
 import type { TicketStatus } from "@/components/ui/Badge";
 
@@ -35,6 +36,15 @@ type RawMessageRow = {
   created_at: string;
   author_id: string;
   author: { full_name: string } | null;
+};
+
+type RawEventRow = {
+  id: string;
+  type: string;
+  actor_id: string | null;
+  from_value: string | null;
+  to_value: string | null;
+  created_at: string;
 };
 
 type RawAttachmentRow = {
@@ -75,7 +85,7 @@ export default async function TicketDetailPage({
   const isAgent = can(user.role, "ticket:handle");
   const isRequester = ticket.requester_id === user.id;
 
-  const [{ data: rawMessages }, { data: rawAttachments }, techniciansResult] =
+  const [{ data: rawMessages }, { data: rawAttachments }, techniciansResult, { data: rawEvents }, { data: people }] =
     await Promise.all([
       supabase
         .from("ticket_messages")
@@ -97,7 +107,28 @@ export default async function TicketDetailPage({
             .eq("is_active", true)
             .order("full_name")
         : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+      supabase
+        .from("ticket_events")
+        .select("id, type, actor_id, from_value, to_value, created_at")
+        .eq("ticket_id", ticket.id)
+        .order("created_at", { ascending: true }),
+      // Nomes dos participantes via função SQL: o RLS de profiles não deixa
+      // o colaborador ler os perfis do IT diretamente
+      supabase.rpc("ticket_participants", { p_ticket_id: ticket.id }),
     ]);
+
+  const names: Record<string, string> = {};
+  for (const p of (people ?? []) as { id: string; full_name: string }[]) {
+    names[p.id] = p.full_name;
+  }
+  const events: TimelineEvent[] = ((rawEvents ?? []) as unknown as RawEventRow[]).map((e) => ({
+    id: e.id,
+    type: e.type,
+    actorId: e.actor_id,
+    fromValue: e.from_value,
+    toValue: e.to_value,
+    createdAt: e.created_at,
+  }));
 
   // Anexos do pedido (sem mensagem) vs. anexos de cada mensagem
   const ticketAttachments: AttachmentRow[] = [];
@@ -125,7 +156,7 @@ export default async function TicketDetailPage({
       id: m.id,
       body: m.body,
       created_at: m.created_at,
-      authorName: m.author?.full_name || "—",
+      authorName: m.author?.full_name || names[m.author_id] || "—",
       isOwn: m.author_id === user.id,
       attachments: attachmentsByMessage.get(m.id) ?? [],
     })
@@ -172,6 +203,10 @@ export default async function TicketDetailPage({
       {isRequester && !isAgent && (
         <RequesterCloseAction ticketId={ticket.id} status={ticket.status} />
       )}
+
+      <Card>
+        <TicketTimeline events={events} names={names} />
+      </Card>
 
       <Card>
         <TicketMessages
