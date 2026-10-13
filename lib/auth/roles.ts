@@ -6,7 +6,7 @@
 export const ROLES = ["COLLABORATOR", "TECHNICIAN", "MANAGER", "ADMIN"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const PERMISSIONS = {
+export const PERMISSIONS = { 
   "ticket:create": ["COLLABORATOR", "TECHNICIAN", "MANAGER", "ADMIN"],
   "ticket:view_all": ["TECHNICIAN", "MANAGER", "ADMIN"],
   "ticket:handle": ["TECHNICIAN", "ADMIN"],
