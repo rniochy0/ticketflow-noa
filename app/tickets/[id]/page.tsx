@@ -103,7 +103,7 @@ export default async function TicketDetailPage({
         ? supabase
             .from("profiles")
             .select("id, full_name")
-            .in("role", ["TECHNICIAN", "ADMIN"])
+            .in("role", ["TECHNICIAN", "MANAGER", "ADMIN"])
             .eq("is_active", true)
             .order("full_name")
         : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),

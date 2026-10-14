@@ -1,13 +1,22 @@
 ﻿import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { withSecurityHeaders } from "@/lib/security/headers";
+import { embedCookieOptions } from "@/lib/supabase/cookie-options";
 
-export async function proxy(request: NextRequest) {
+async function handle(request: NextRequest) {
+  // As rotas de cron não têm sessão de utilizador: autenticam-se com CRON_SECRET
+  // dentro da própria rota (falha fechada se o segredo não existir).
+  if (request.nextUrl.pathname.startsWith("/api/cron/")) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      cookieOptions: embedCookieOptions,
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -25,6 +34,7 @@ export async function proxy(request: NextRequest) {
     }
   );
 
+  // Valida o token no servidor Supabase (getSession() não serve para autorização)
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -39,6 +49,10 @@ export async function proxy(request: NextRequest) {
   }
 
   return response;
+}
+
+export async function proxy(request: NextRequest) {
+  return withSecurityHeaders(await handle(request));
 }
 
 export const config = {

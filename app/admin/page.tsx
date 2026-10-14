@@ -10,7 +10,7 @@ export default async function AdminHome() {
 
   return (
     <PageContainer $size="lg">
-      <PageHeader title="Administracao" backHref="/" />
+      <PageHeader title="Administracão" backHref="/" />
       <Stack $gap="md">
         <MutedText>
           {user.fullName || user.email} ({user.role})

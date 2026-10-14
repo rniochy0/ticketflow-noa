@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePermission } from "@/lib/auth/session";
+import { canManageUser, assignableRoles } from "@/lib/auth/roles";
 import { createUserSchema, updateUserSchema, userIdSchema } from "@/lib/validation/user";
 
 export type UserFormState = {
@@ -46,7 +47,7 @@ export async function createUser(
   _prev: UserFormState,
   formData: FormData
 ): Promise<UserFormState> {
-  await requirePermission("admin:manage");
+  const me = await requirePermission("admin:manage");
 
   const raw = rawFrom(formData);
   const parsed = createUserSchema.safeParse(raw);
@@ -54,6 +55,12 @@ export async function createUser(
     return { values: raw, fieldErrors: fieldErrorsOf(parsed.error.issues) };
   }
   const d = parsed.data;
+
+  // O gestor não cria administradores (esta rota usa a secret key, que ignora
+  // o trigger da BD — por isso a regra tem de ser verificada aqui)
+  if (!assignableRoles(me.role).includes(d.role)) {
+    return { values: raw, fieldErrors: { role: "Não tens permissão para atribuir este perfil." } };
+  }
 
   const admin = createAdminClient();
   const tempPassword = generateTempPassword();
@@ -114,13 +121,25 @@ export async function updateUser(
   }
   const d = parsed.data;
 
-  // Evita o admin perder o próprio acesso por engano
-  if (id.data === me.id && d.role !== "ADMIN") {
-    return { values: raw, fieldErrors: { role: "Não podes retirar o teu próprio perfil de administrador." } };
+  // Evita perder o próprio acesso por engano (ou subir o próprio perfil)
+  if (id.data === me.id && d.role !== me.role) {
+    return { values: raw, fieldErrors: { role: "Não podes alterar o teu próprio perfil." } };
   }
 
-  // Cliente normal: o RLS + trigger só deixam um ADMIN alterar estes campos
   const supabase = await createClient();
+
+  // O gestor não altera administradores nem atribui o perfil ADMIN
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", id.data)
+    .single();
+  if (!target) return { values: raw, error: "Utilizador inválido." };
+  if (!canManageUser(me.role, target.role) || !assignableRoles(me.role).includes(d.role)) {
+    return { values: raw, error: "Não tens permissão para alterar este utilizador." };
+  }
+
+  // Cliente normal: o RLS + trigger (0012) são a barreira final
   const { error } = await supabase
     .from("profiles")
     .update({
@@ -147,6 +166,14 @@ export async function toggleUserActive(userId: string, next: boolean) {
   // Não apagamos utilizadores (histórico de tickets). Inativo = requireUser
   // termina a sessão no pedido seguinte e o login é recusado.
   const supabase = await createClient();
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", id.data)
+    .single();
+  if (!target || !canManageUser(me.role, target.role)) {
+    throw new Error("Não tens permissão para alterar este utilizador.");
+  }
   const { error } = await supabase.from("profiles").update({ is_active: next }).eq("id", id.data);
   if (error) throw new Error("Não foi possível atualizar o utilizador.");
   revalidatePath("/admin/users");

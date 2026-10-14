@@ -7,14 +7,13 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Stack, Inline, MutedText } from "@/components/layout/Stack";
-import { ROLES } from "@/lib/auth/roles";
+import type { Role } from "@/lib/auth/roles";
 import { roleLabels } from "@/lib/validation/user";
 import type { UserFormState } from "@/app/admin/users/actions";
 
 type Option = { value: string; label: string };
 type Action = (state: UserFormState, formData: FormData) => Promise<UserFormState>;
 
-const roleOptions: Option[] = ROLES.map((r) => ({ value: r, label: roleLabels[r] }));
 
 export type UserFormValues = {
   email?: string;
@@ -31,12 +30,15 @@ export function UserForm({
   initialValues,
   sites,
   departments,
+  roles,
 }: {
   action: Action;
   mode: "create" | "edit";
   initialValues?: UserFormValues;
   sites: Option[];
   departments: Option[];
+  // Perfis que quem está a editar pode atribuir (o gestor não vê ADMIN)
+  roles: readonly Role[];
 }) {
   const [state, formAction, pending] = useActionState<UserFormState, FormData>(action, {
     values: initialValues,
@@ -100,7 +102,7 @@ export function UserForm({
         <Select
           label="Perfil"
           name="role"
-          options={roleOptions}
+          options={roles.map((r) => ({ value: r, label: roleLabels[r] }))}
           defaultValue={v.role || "COLLABORATOR"}
           error={state.fieldErrors?.role}
         />

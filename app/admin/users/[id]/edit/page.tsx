@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/session";
+import { assignableRoles, canManageUser } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { userIdSchema } from "@/lib/validation/user";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -8,7 +9,7 @@ import { UserForm } from "@/components/admin/UserForm";
 import { updateUser } from "../../actions";
 
 export default async function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
-  await requirePermission("admin:manage");
+  const me = await requirePermission("admin:manage");
   const { id } = await params;
   if (!userIdSchema.safeParse(id).success) notFound();
 
@@ -23,13 +24,15 @@ export default async function EditUserPage({ params }: { params: Promise<{ id: s
     supabase.from("stores").select("id, name").order("name"),
     supabase.from("departments").select("id, name").order("name"),
   ]);
-  if (!user) notFound();
+  // O gestor não vê o ecrã de edição de administradores
+  if (!user || !canManageUser(me.role, user.role)) notFound();
 
   return (
     <PageContainer $size="sm">
       <PageHeader title="Editar utilizador" backHref="/admin/users" />
       <UserForm
         mode="edit"
+        roles={assignableRoles(me.role)}
         action={updateUser.bind(null, id)}
         initialValues={{
           email: user.email,

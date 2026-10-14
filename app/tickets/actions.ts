@@ -56,7 +56,7 @@ export async function createTicket(
 
   const supabase = await createClient();
 
-  // Em nome de outro colaborador: só quem atende (TECHNICIAN/ADMIN). Mesmo que
+  // Em nome de outro colaborador: só quem atende (TECHNICIAN/MANAGER/ADMIN). Mesmo que
   // alguém forje o campo, o RLS da BD também recusa para quem não é agente.
   const onBehalf = parsed.data.requesterId && parsed.data.requesterId !== user.id;
   if (onBehalf && !can(user.role, "ticket:handle")) {
@@ -150,12 +150,20 @@ export async function assignToMe(ticketId: string): Promise<ActionResult> {
   const user = await requirePermission("ticket:handle");
   const supabase = await createClient();
 
-  const { error } = await supabase
+  // Só assume tickets NOVOS e sem responsável. A condição vai na própria query:
+  // se dois técnicos clicarem ao mesmo tempo, só o primeiro consegue.
+  const { data, error } = await supabase
     .from("tickets")
     .update({ assignee_id: user.id, status: "IN_PROGRESS" })
-    .eq("id", ticketId);
+    .eq("id", ticketId)
+    .eq("status", "OPEN")
+    .is("assignee_id", null)
+    .select("id");
 
   if (error) return { ok: false, error: "Não foi possível assumir o ticket." };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Este ticket já foi assumido por outra pessoa." };
+  }
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/it");
   return { ok: true };
@@ -175,14 +183,14 @@ export async function assignTechnician(
   const supabase = await createClient();
 
   // Confirma que o alvo é mesmo um técnico activo antes de gravar — impede
-  // atribuir a uma conta desactivada ou a um role que não atende (MANAGER).
+  // atribuir a uma conta desactivada ou a um perfil que não atende (COLLABORATOR).
   const { data: target } = await supabase
     .from("profiles")
     .select("role, is_active, email")
     .eq("id", parsed.data.technicianId)
     .single();
 
-  if (!target?.is_active || !["TECHNICIAN", "ADMIN"].includes(target.role)) {
+  if (!target?.is_active || !["TECHNICIAN", "MANAGER", "ADMIN"].includes(target.role)) {
     return { ok: false, error: "O responsável tem de ser um técnico activo." };
   }
 
