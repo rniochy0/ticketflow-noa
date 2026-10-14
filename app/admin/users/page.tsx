@@ -75,7 +75,7 @@ export default async function UsersPage({
           </form>
         </Inline>
 
-        <UsersTable users={users} currentUserId={me.id} />
+        <UsersTable users={users} currentUserId={me.id} currentUserRole={me.role} />
 
         <Inline $gap="sm">
           {page > 1 && <Link href={href(page - 1)}>← Anterior</Link>}
