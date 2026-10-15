@@ -17,9 +17,24 @@ export const PageContainer = styled.main<{ $size?: Size }>`
   padding: 0 ${({ theme }) => theme.spacing.md};
   display: grid;
   gap: ${({ theme }) => theme.spacing.md};
+  /* sem isto, uma tabela/linha larga estica a grelha e cria scroll horizontal na página */
+  min-width: 0;
+
+  & > * {
+    min-width: 0;
+  }
+
+  @media (max-width: 600px) {
+    margin: ${({ theme }) => theme.spacing.md} auto;
+  }
 `;
 
 export const PageTitle = styled.h1`
   margin: 0;
   font-size: ${({ theme }) => theme.fontSizes.xl};
+  overflow-wrap: anywhere;
+
+  @media (max-width: 600px) {
+    font-size: ${({ theme }) => theme.fontSizes.lg};
+  }
 `;

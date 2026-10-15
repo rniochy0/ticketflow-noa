@@ -1,32 +1,20 @@
-import Link from 'next/link';
+import Link from "next/link";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/Button";
 
 export default function NotFound() {
   return (
-    <div style={
-      { 
-        textAlign: 'center', 
-        padding: '50px' 
+    <PageContainer $size="sm">
+      <EmptyState
+        title="Página não encontrada"
+        description="O endereço não existe ou já não está disponível."
+        action={
+          <Link href="/">
+            <Button>Ir para o início</Button>
+          </Link>
         }
-        }>
-      <h2>{"Página Não Encontrada"}</h2>
-      <p>{"Lamentamos, mas a página que procura não existe ou foi movida."}</p>
-      <Link 
-        href="/" 
-        style={
-            { 
-              color: 'blue', 
-              textDecoration: 'none', 
-              marginTop: '20px', 
-              display: 'inline-block',
-              border: '1px solid gray',
-              padding: '10px 20px',
-              borderRadius: '5px',
-              backgroundColor: '#f0f0f0' 
-            }
-          }
-          >
-                {"Voltar para a Página Inicial"}
-      </Link>
-    </div>
+      />
+    </PageContainer>
   );
 }
