@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Inline } from "@/components/layout/Stack";
 import { ActiveToggleButton } from "./ActiveToggleButton";
+import { ResetPasswordButton } from "./ResetPasswordButton";
 import { roleLabels } from "@/lib/validation/user";
 import { toggleUserActive } from "@/app/admin/users/actions";
 import { canManageUser, type Role } from "@/lib/auth/roles";
@@ -60,6 +61,7 @@ export function UsersTable({
                   <Link href={`/admin/users/${u.id}/edit`}>
                     <Button $variant="secondary">Editar</Button>
                   </Link>
+                  {u.id !== currentUserId && <ResetPasswordButton userId={u.id} />}
                   {u.id !== currentUserId && (
                     <ActiveToggleButton
                       isActive={u.is_active}

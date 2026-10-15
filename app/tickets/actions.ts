@@ -7,6 +7,9 @@ import { can } from "@/lib/auth/roles";
 import {
   notifyNewTicket,
   notifyOpenedOnBehalf,
+  notifyTicketUpdate,
+  recipientsExcept,
+  priorityLabel,
   notifyAssigned,
   notifyNewMessage,
   notifyResolved,
@@ -146,6 +149,29 @@ export async function createTicket(
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
+const STATUS_PT: Record<string, string> = {
+  OPEN: "Aberto",
+  IN_PROGRESS: "Em atendimento",
+  WAITING_USER: "Aguarda resposta",
+  RESOLVED: "Resolvido",
+  CLOSED: "Fechado",
+};
+const statusLabelPt = (s: string) => STATUS_PT[s] ?? s;
+
+type Supa = Awaited<ReturnType<typeof createClient>>;
+type TicketWithRequester = {
+  id: string;
+  number: string;
+  title: string;
+  requester: { email: string } | null;
+};
+
+// Email do responsável via função SQL (o solicitante não lê perfis do IT)
+async function assigneeEmailOf(supabase: Supa, ticketId: string): Promise<string | null> {
+  const { data } = await supabase.rpc("ticket_assignee_email", { p_ticket_id: ticketId });
+  return (data as string | null) ?? null;
+}
+
 export async function assignToMe(ticketId: string): Promise<ActionResult> {
   const user = await requirePermission("ticket:handle");
   const supabase = await createClient();
@@ -158,12 +184,21 @@ export async function assignToMe(ticketId: string): Promise<ActionResult> {
     .eq("id", ticketId)
     .eq("status", "OPEN")
     .is("assignee_id", null)
-    .select("id");
+    .select("id, number, title, requester:profiles!tickets_requester_id_fkey(email)");
 
   if (error) return { ok: false, error: "Não foi possível assumir o ticket." };
   if (!data || data.length === 0) {
     return { ok: false, error: "Este ticket já foi assumido por outra pessoa." };
   }
+
+  const t = data[0] as unknown as TicketWithRequester;
+  await notifyTicketUpdate(
+    t,
+    recipientsExcept([t.requester?.email], user.email),
+    "Pedido em atendimento",
+    "assumiu o teu pedido e já está a tratar dele.",
+    user.fullName || user.email
+  );
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/it");
   return { ok: true };
@@ -172,7 +207,7 @@ export async function assignToMe(ticketId: string): Promise<ActionResult> {
 export async function assignTechnician(
   formData: FormData
 ): Promise<ActionResult> {
-  await requirePermission("ticket:handle");
+  const user = await requirePermission("ticket:handle");
 
   const parsed = assignTicketSchema.safeParse({
     ticketId: formData.get("ticketId"),
@@ -186,7 +221,7 @@ export async function assignTechnician(
   // atribuir a uma conta desactivada ou a um perfil que não atende (COLLABORATOR).
   const { data: target } = await supabase
     .from("profiles")
-    .select("role, is_active, email")
+    .select("role, is_active, email, full_name")
     .eq("id", parsed.data.technicianId)
     .single();
 
@@ -198,12 +233,24 @@ export async function assignTechnician(
     .from("tickets")
     .update({ assignee_id: parsed.data.technicianId })
     .eq("id", parsed.data.ticketId)
-    .select("id, number, title")
+    .select("id, number, title, requester:profiles!tickets_requester_id_fkey(email)")
     .single();
 
   if (error || !ticket) return { ok: false, error: "Não foi possível atribuir o técnico." };
 
-  await notifyAssigned(ticket, target.email);
+  const t = ticket as unknown as TicketWithRequester;
+  // Quem recebe o ticket é avisado (exceto se se atribuiu a si próprio)...
+  if (recipientsExcept([target.email], user.email).length > 0) {
+    await notifyAssigned(t, target.email);
+  }
+  // ...e o colaborador fica a saber quem trata do pedido
+  await notifyTicketUpdate(
+    t,
+    recipientsExcept([t.requester?.email], user.email),
+    "Pedido atribuído",
+    `atribuiu o teu pedido a ${target.full_name || "um técnico"}.`,
+    user.fullName || user.email
+  );
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   return { ok: true };
@@ -254,14 +301,46 @@ export async function changeStatus(formData: FormData): Promise<ActionResult> {
   // corrida entre dois pedidos) — o trigger é sempre a última palavra.
   if (error) return { ok: false, error: "Transição de estado não permitida." };
 
-  if (parsed.data.status === "RESOLVED") {
-    const requesterEmail = (ticket as unknown as { requester: { email: string } | null })
-      .requester?.email;
-    if (requesterEmail) {
-      await notifyResolved(
-        { id: parsed.data.ticketId, number: ticket.number, title: ticket.title },
-        requesterEmail
-      );
+  // ---- Notificações (curtas; nunca para quem fez a ação) ----
+  const ref = { id: parsed.data.ticketId, number: ticket.number, title: ticket.title };
+  const requesterEmail =
+    (ticket as unknown as { requester: { email: string } | null }).requester?.email ?? null;
+  const assigneeEmail = await assigneeEmailOf(supabase, parsed.data.ticketId);
+  const actor = user.fullName || user.email;
+  const next = parsed.data.status;
+
+  if (isRequester && !isAgent) {
+    // O colaborador fechou: avisa o responsável
+    await notifyTicketUpdate(
+      ref,
+      recipientsExcept([assigneeEmail], user.email),
+      "Pedido fechado",
+      "fechou o pedido.",
+      actor
+    );
+  } else {
+    // A equipa mudou o estado: o colaborador recebe a mensagem específica...
+    const toRequester = recipientsExcept([requesterEmail], user.email);
+    if (toRequester.length > 0) {
+      if (next === "RESOLVED") {
+        await notifyResolved(ref, toRequester[0]);
+      } else if (next === "WAITING_USER") {
+        await notifyTicketUpdate(ref, toRequester, "Aguardamos a tua resposta",
+          "precisa de uma resposta tua para continuar.", actor);
+      } else if (next === "IN_PROGRESS") {
+        const reopened = ticket.status === "RESOLVED";
+        await notifyTicketUpdate(ref, toRequester,
+          reopened ? "Pedido reaberto" : "Pedido em atendimento",
+          reopened ? "reabriu o teu pedido." : "retomou o atendimento do teu pedido.", actor);
+      } else if (next === "CLOSED") {
+        await notifyTicketUpdate(ref, toRequester, "Pedido fechado", "fechou o teu pedido.", actor);
+      }
+    }
+    // ...e o responsável, se não foi ele a mudar, fica a saber
+    const toAssignee = recipientsExcept([assigneeEmail], user.email);
+    if (toAssignee.length > 0) {
+      await notifyTicketUpdate(ref, toAssignee, "Estado alterado",
+        `alterou o estado do pedido para ${statusLabelPt(next)}.`, actor);
     }
   }
 
@@ -271,7 +350,7 @@ export async function changeStatus(formData: FormData): Promise<ActionResult> {
 }
 
 export async function changePriority(formData: FormData): Promise<ActionResult> {
-  await requirePermission("ticket:handle");
+  const user = await requirePermission("ticket:handle");
 
   const parsed = changePrioritySchema.safeParse({
     ticketId: formData.get("ticketId"),
@@ -280,12 +359,24 @@ export async function changePriority(formData: FormData): Promise<ActionResult> 
   if (!parsed.success) return { ok: false, error: "Prioridade inválida." };
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("tickets")
     .update({ priority: parsed.data.priority })
-    .eq("id", parsed.data.ticketId);
+    .eq("id", parsed.data.ticketId)
+    .select("id, number, title, requester:profiles!tickets_requester_id_fkey(email)")
+    .single();
 
-  if (error) return { ok: false, error: "Não foi possível alterar a prioridade." };
+  if (error || !data) return { ok: false, error: "Não foi possível alterar a prioridade." };
+
+  const t = data as unknown as TicketWithRequester;
+  const assigneeEmail = await assigneeEmailOf(supabase, t.id);
+  await notifyTicketUpdate(
+    t,
+    recipientsExcept([t.requester?.email, assigneeEmail], user.email),
+    "Prioridade alterada",
+    `alterou a prioridade do pedido para ${priorityLabel(parsed.data.priority)}.`,
+    user.fullName || user.email
+  );
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   return { ok: true };
 }
@@ -355,7 +446,13 @@ export async function addMessage(
     } else {
       const requesterEmail = (ticket as unknown as { requester: { email: string } | null })
         .requester?.email;
-      if (requesterEmail) await notifyNewMessage(ticketRef, requesterEmail, user.fullName);
+      // A equipa respondeu: avisa o colaborador e, se for outra pessoa, o responsável
+      const assigneeEmail =
+        ticket.assignee_id && ticket.assignee_id !== user.id
+          ? await assigneeEmailOf(supabase, parsed.data.ticketId)
+          : null;
+      const to = recipientsExcept([requesterEmail, assigneeEmail], user.email);
+      if (to.length > 0) await notifyNewMessage(ticketRef, to, user.fullName);
     }
   }
 

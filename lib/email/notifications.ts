@@ -35,6 +35,25 @@ function wrapper(heading: string, bodyHtml: string, ticket: TicketRef) {
   `;
 }
 
+// Texto curto e sem conteúdo sensível (só número, título, link). Os rótulos
+// ficam aqui porque este módulo é só de servidor.
+const PRIORITY_LABELS: Record<string, string> = {
+  LOW: "Baixa",
+  MEDIUM: "Média",
+  HIGH: "Alta",
+  URGENT: "Urgente",
+};
+export const priorityLabel = (p: string) => PRIORITY_LABELS[p] ?? p;
+
+// Evita email para quem fez a ação e duplicados
+export function recipientsExcept(
+  emails: (string | null | undefined)[],
+  actorEmail: string
+): string[] {
+  const me = actorEmail.toLowerCase();
+  return [...new Set(emails.filter((e): e is string => !!e && e.toLowerCase() !== me))];
+}
+
 export type SendResult = { ok: true; id: string } | { ok: false; error: string };
 
 // O SDK do Resend NÃO lança excepção quando recusa um envio: devolve
@@ -155,5 +174,97 @@ export async function sendTestEmail(to: string): Promise<SendResult> {
       <h2>Email de teste</h2>
       <p>Se estás a ler isto, o envio de emails do NOA HelpDesk está a funcionar.</p>
     </div>`
+  );
+}
+
+// ---------- Notificações genéricas de tickets (curtas) ----------
+// Ex: "Maria assumiu o teu pedido." — actorName em negrito, texto escapado.
+export async function notifyTicketUpdate(
+  ticket: TicketRef,
+  recipients: string | string[],
+  heading: string,
+  text: string,
+  actorName?: string
+) {
+  const who = actorName ? `<strong>${escapeHtml(actorName)}</strong> ` : "";
+  await send(
+    recipients,
+    `${heading}: ${ticket.number}`,
+    wrapper(heading, `<p>${who}${escapeHtml(text)}</p>`, ticket)
+  );
+}
+
+// ---------- Emails de conta (sem ticket) ----------
+function plainWrapper(heading: string, bodyHtml: string, cta?: { label: string; href: string }) {
+  return `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="margin-bottom: 8px;">${heading}</h2>
+      ${bodyHtml}
+      ${
+        cta
+          ? `<p style="margin-top:24px;"><a href="${cta.href}" style="background:#0a6cff;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">${escapeHtml(cta.label)}</a></p>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+const passwordBox = (pw: string) =>
+  `<p style="font-family: monospace; font-size: 18px; background:#f3f4f6; padding:10px 14px; border-radius:8px; display:inline-block;">${escapeHtml(pw)}</p>`;
+
+// Contém a password temporária — única mensagem que o faz, a pedido do negócio.
+// Mitigações: a conta é obrigada a trocá-la no 1.º acesso (ver proxy.ts) e a
+// password nunca é registada em logs.
+export async function notifyWelcome(email: string, name: string, tempPassword: string) {
+  return send(
+    email,
+    "A tua conta NOA HelpDesk",
+    plainWrapper(
+      "Bem-vindo(a) ao NOA HelpDesk",
+      `<p>Olá ${escapeHtml(name || "")}, a tua conta foi criada.</p>
+       <p>Email: <strong>${escapeHtml(email)}</strong><br/>Password temporária:</p>
+       ${passwordBox(tempPassword)}
+       <p>No primeiro acesso vais ter de definir uma password nova.</p>`,
+      { label: "Entrar", href: `${APP_URL}/login` }
+    )
+  );
+}
+
+export async function notifyPasswordReset(email: string, name: string, tempPassword: string) {
+  return send(
+    email,
+    "Nova password temporária — NOA HelpDesk",
+    plainWrapper(
+      "Password redefinida",
+      `<p>Olá ${escapeHtml(name || "")}, o IT redefiniu a tua password.</p>
+       <p>Password temporária:</p>
+       ${passwordBox(tempPassword)}
+       <p>No próximo acesso vais ter de definir uma password nova.</p>`,
+      { label: "Entrar", href: `${APP_URL}/login` }
+    )
+  );
+}
+
+// Alerta de segurança: se não foste tu, o utilizador sabe que deve avisar o IT
+export async function notifyPasswordChanged(email: string, name: string) {
+  return send(
+    email,
+    "A tua password foi alterada — NOA HelpDesk",
+    plainWrapper(
+      "Password alterada",
+      `<p>Olá ${escapeHtml(name || "")}, a password da tua conta foi alterada.</p>
+       <p>Se não foste tu, contacta o IT de imediato.</p>`
+    )
+  );
+}
+
+export async function notifyAccountChange(email: string, name: string, message: string) {
+  return send(
+    email,
+    "Alteração na tua conta — NOA HelpDesk",
+    plainWrapper(
+      "Alteração na tua conta",
+      `<p>Olá ${escapeHtml(name || "")},</p><p>${escapeHtml(message)}</p>`
+    )
   );
 }

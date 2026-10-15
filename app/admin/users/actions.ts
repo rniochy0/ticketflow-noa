@@ -7,6 +7,12 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePermission } from "@/lib/auth/session";
 import { canManageUser, assignableRoles } from "@/lib/auth/roles";
+import {
+  notifyWelcome,
+  notifyPasswordReset,
+  notifyAccountChange,
+} from "@/lib/email/notifications";
+import { roleLabels } from "@/lib/validation/user";
 import { createUserSchema, updateUserSchema, userIdSchema } from "@/lib/validation/user";
 
 export type UserFormState = {
@@ -14,7 +20,8 @@ export type UserFormState = {
   error?: string;
   fieldErrors?: Record<string, string>;
   // Mostrada UMA vez ao admin; nunca é guardada nem registada em logs
-  created?: { email: string; tempPassword: string };
+  // tempPassword só vem preenchida se o email NÃO seguiu (fallback manual)
+  created?: { email: string; emailSent: boolean; tempPassword?: string };
 };
 
 // Sem caracteres ambíguos (0/O, 1/l/I). randomInt é criptograficamente seguro.
@@ -70,6 +77,9 @@ export async function createUser(
     password: tempPassword,
     email_confirm: true, // conta interna: sem passo de confirmação por email
     user_metadata: { full_name: d.fullName },
+    // app_metadata só é editável pelo servidor (o utilizador não a consegue
+    // limpar): obriga a trocar a password temporária no 1.º acesso (proxy.ts)
+    app_metadata: { must_change_password: true },
   });
 
   if (error || !data.user) {
@@ -100,8 +110,18 @@ export async function createUser(
     return { values: raw, error: "Não foi possível criar o utilizador." };
   }
 
+  // A password temporária segue por email para o próprio utilizador
+  const sent = await notifyWelcome(d.email, d.fullName, tempPassword);
+
   revalidatePath("/admin/users");
-  return { created: { email: d.email, tempPassword } };
+  return {
+    created: {
+      email: d.email,
+      emailSent: sent.ok,
+      // Só mostramos no ecrã se o email falhou, para o admin a entregar à mão
+      tempPassword: sent.ok ? undefined : tempPassword,
+    },
+  };
 }
 
 export async function updateUser(
@@ -131,7 +151,7 @@ export async function updateUser(
   // O gestor não altera administradores nem atribui o perfil ADMIN
   const { data: target } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, email, full_name")
     .eq("id", id.data)
     .single();
   if (!target) return { values: raw, error: "Utilizador inválido." };
@@ -153,6 +173,14 @@ export async function updateUser(
 
   if (error) return { values: raw, error: "Não foi possível guardar as alterações." };
 
+  if (target.role !== d.role) {
+    await notifyAccountChange(
+      target.email,
+      d.fullName,
+      `O teu perfil no HelpDesk passou a ${roleLabels[d.role]}.`
+    );
+  }
+
   revalidatePath("/admin/users");
   redirect("/admin/users");
 }
@@ -168,7 +196,7 @@ export async function toggleUserActive(userId: string, next: boolean) {
   const supabase = await createClient();
   const { data: target } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, email, full_name")
     .eq("id", id.data)
     .single();
   if (!target || !canManageUser(me.role, target.role)) {
@@ -176,5 +204,52 @@ export async function toggleUserActive(userId: string, next: boolean) {
   }
   const { error } = await supabase.from("profiles").update({ is_active: next }).eq("id", id.data);
   if (error) throw new Error("Não foi possível atualizar o utilizador.");
+
+  await notifyAccountChange(
+    target.email,
+    target.full_name,
+    next
+      ? "A tua conta no HelpDesk foi reativada. Já podes entrar."
+      : "A tua conta no HelpDesk foi desativada. Se achas que é um engano, contacta o IT."
+  );
   revalidatePath("/admin/users");
+}
+
+export type ResetResult =
+  | { ok: true; emailSent: boolean; tempPassword?: string }
+  | { ok: false; error: string };
+
+// O IT redefine a password de alguém (esquecimento): gera uma temporária,
+// obriga a trocá-la no próximo acesso e envia-a por email.
+export async function resetUserPassword(userId: string): Promise<ResetResult> {
+  const me = await requirePermission("admin:manage");
+  const id = userIdSchema.safeParse(userId);
+  if (!id.success) return { ok: false, error: "Utilizador inválido." };
+  if (id.data === me.id) {
+    return { ok: false, error: "Para a tua conta usa “Alterar password”." };
+  }
+
+  const supabase = await createClient();
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("role, email, full_name, is_active")
+    .eq("id", id.data)
+    .single();
+  if (!target || !canManageUser(me.role, target.role)) {
+    return { ok: false, error: "Não tens permissão para alterar este utilizador." };
+  }
+
+  const tempPassword = generateTempPassword();
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.updateUserById(id.data, {
+    password: tempPassword,
+    app_metadata: { must_change_password: true },
+  });
+  if (error) {
+    console.error("[users] reset password falhou:", error.code);
+    return { ok: false, error: "Não foi possível redefinir a password." };
+  }
+
+  const sent = await notifyPasswordReset(target.email, target.full_name, tempPassword);
+  return { ok: true, emailSent: sent.ok, tempPassword: sent.ok ? undefined : tempPassword };
 }
