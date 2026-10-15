@@ -37,7 +37,13 @@ const Row = styled(Link)`
 const RowTop = styled.div`
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: ${({ theme }) => theme.spacing.sm};
+`;
+
+const Title = styled.p`
+  margin: 4px 0;
+  overflow-wrap: anywhere; /* títulos longos não rebentam o layout no telemóvel */
 `;
 
 const priorityLabels: Record<string, string> = {
@@ -57,17 +63,27 @@ function formatDate(iso: string) {
 
 export function TicketList({
   tickets,
-  page,
-  totalPages,
-  basePath,
+  page = 1,
+  totalPages = 1,
+  basePath = "/tickets",
+  query = "",
+  filtered = false,
 }: {
   tickets: TicketRow[];
-  page: number;
-  totalPages: number;
-  basePath: string;
+  page?: number;
+  totalPages?: number;
+  basePath?: string;
+  // filtros actuais já serializados (sem "page"), preservados na paginação
+  query?: string;
+  filtered?: boolean;
 }) {
   if (tickets.length === 0) {
-    return (
+    return filtered ? (
+      <EmptyState
+        title="Nenhum pedido encontrado"
+        description="Experimenta alterar ou limpar os filtros."
+      />
+    ) : (
       <EmptyState
         title="Ainda não tens pedidos"
         description="Quando abrires um pedido de suporte, ele aparece aqui."
@@ -80,6 +96,12 @@ export function TicketList({
     );
   }
 
+  const pageHref = (p: number) => {
+    const qs = new URLSearchParams(query);
+    qs.set("page", String(p));
+    return `${basePath}?${qs.toString()}`;
+  };
+
   return (
     <Stack $gap="md">
       <Card style={{ padding: 0 }}>
@@ -89,7 +111,7 @@ export function TicketList({
               <strong>{t.number}</strong>
               <StatusBadge status={t.status as TicketStatus} />
             </RowTop>
-            <p style={{ margin: "4px 0" }}>{t.title}</p>
+            <Title>{t.title}</Title>
             <MutedText>
               {priorityLabels[t.priority] ?? t.priority} · {formatDate(t.created_at)}
             </MutedText>
@@ -100,7 +122,7 @@ export function TicketList({
       {totalPages > 1 && (
         <Inline $gap="sm" style={{ justifyContent: "center" }}>
           {page > 1 && (
-            <Link href={`${basePath}?page=${page - 1}`}>
+            <Link href={pageHref(page - 1)}>
               <Button $variant="secondary">Anterior</Button>
             </Link>
           )}
@@ -108,7 +130,7 @@ export function TicketList({
             Página {page} de {totalPages}
           </MutedText>
           {page < totalPages && (
-            <Link href={`${basePath}?page=${page + 1}`}>
+            <Link href={pageHref(page + 1)}>
               <Button $variant="secondary">Seguinte</Button>
             </Link>
           )}
