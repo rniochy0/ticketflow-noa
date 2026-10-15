@@ -46,7 +46,7 @@ export function TicketsFilterBar({
 }: {
   stores: Option[];
   categories: Option[];
-  assignees: Option[];
+  assignees?: Option[]; // opcional: sem lista, o filtro "Responsável" não aparece
   current: {
     q?: string;
     status?: string;
@@ -72,7 +72,9 @@ export function TicketsFilterBar({
       <FilterSelect name="storeId" label="Site" options={stores} defaultValue={current.storeId} />
       <FilterSelect name="categoryId" label="Categoria" options={categories} defaultValue={current.categoryId} />
       <FilterSelect name="priority" label="Prioridade" options={priorityOptions} defaultValue={current.priority} />
-      <FilterSelect name="assigneeId" label="Responsável" options={assignees} defaultValue={current.assigneeId} />
+      {assignees && (
+        <FilterSelect name="assigneeId" label="Responsável" options={assignees} defaultValue={current.assigneeId} />
+      )}
       <FilterSelect name="sort" label="Ordenar" options={sortOptions} defaultValue={current.sort ?? "newest"} allLabel={null} />
       <Button type="submit" $variant="secondary">Filtrar</Button>
     </Bar>
