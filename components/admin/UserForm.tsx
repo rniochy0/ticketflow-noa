@@ -51,12 +51,20 @@ export function UserForm({
         <Stack $gap="md">
           <strong>Utilizador criado</strong>
           <MutedText>Email: {state.created.email}</MutedText>
-          <MutedText>Password temporária (só é mostrada agora, copia-a):</MutedText>
-          <code style={{ fontSize: 18, userSelect: "all" }}>{state.created.tempPassword}</code>
-          <MutedText>
-            Entrega-a ao colaborador por um canal seguro e pede-lhe que a altere em
-            “Alterar password” no primeiro acesso.
-          </MutedText>
+          {state.created.emailSent ? (
+            <MutedText>
+              Enviámos a password temporária para este email. No primeiro acesso, o
+              utilizador terá de definir uma password nova.
+            </MutedText>
+          ) : (
+            <>
+              <MutedText>
+                Não foi possível enviar o email. Entrega esta password por um canal seguro
+                (só é mostrada agora):
+              </MutedText>
+              <code style={{ fontSize: 18, userSelect: "all" }}>{state.created.tempPassword}</code>
+            </>
+          )}
           <Inline $gap="sm">
             <Link href="/admin/users/new">
               <Button $variant="secondary">Criar outro</Button>

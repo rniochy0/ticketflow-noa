@@ -1,7 +1,9 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth/session";
+import { notifyPasswordChanged } from "@/lib/email/notifications";
 import { changePasswordSchema } from "@/lib/validation/user";
 
 export type PasswordState = {
@@ -38,6 +40,15 @@ export async function changePassword(
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.newPassword });
   if (error) return { error: "Não foi possível alterar a password. Tenta novamente." };
+
+  // Limpa a obrigação de trocar a password (só o servidor o consegue fazer)
+  const { error: flagError } = await createAdminClient().auth.admin.updateUserById(user.id, {
+    app_metadata: { must_change_password: false },
+  });
+  if (flagError) console.error("[password] não limpou must_change_password:", flagError.code);
+
+  // Alerta de segurança para o próprio utilizador
+  await notifyPasswordChanged(user.email, user.fullName);
 
   return { ok: true };
 }

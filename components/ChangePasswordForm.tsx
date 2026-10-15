@@ -1,14 +1,21 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { MutedText } from "@/components/layout/Stack";
 import { changePassword, type PasswordState } from "@/app/conta/password/actions";
 
-export function ChangePasswordForm() {
+export function ChangePasswordForm({ forced = false }: { forced?: boolean }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState<PasswordState, FormData>(changePassword, {});
+
+  // Depois de definir a nova password (obrigatória), segue para o início
+  useEffect(() => {
+    if (state.ok && forced) router.replace("/");
+  }, [state.ok, forced, router]);
 
   return (
     <Card>

@@ -41,6 +41,14 @@ async function handle(request: NextRequest) {
 
   const isLogin = request.nextUrl.pathname === "/login";
 
+  // Password temporária: até a trocar, só pode ver a página de troca (ou sair).
+  // app_metadata só é alterável pelo servidor, o utilizador não a limpa sozinho.
+  const mustChange = user?.app_metadata?.must_change_password === true;
+  const path = request.nextUrl.pathname;
+  if (user && mustChange && path !== "/conta/password" && path !== "/auth/end-session") {
+    return NextResponse.redirect(new URL("/conta/password?obrigatorio=1", request.url));
+  }
+
   if (!user && !isLogin) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
