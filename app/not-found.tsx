@@ -3,6 +3,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 
+
 export default function NotFound() {
   return (
     <PageContainer $size="sm">

@@ -23,6 +23,8 @@ type SearchParams = {
   storeId?: string;
   categoryId?: string;
   priority?: string;
+  assigneeId?: string;
+  sort?: string;
   page?: string;
 };
 
@@ -59,15 +61,24 @@ export default async function AllTicketsPage({
   const priority = PRIORITY_VALUES.includes(sp.priority ?? "") ? sp.priority : undefined;
   const storeId = UUID_RE.test(sp.storeId ?? "") ? sp.storeId : undefined;
   const categoryId = UUID_RE.test(sp.categoryId ?? "") ? sp.categoryId : undefined;
-  const page = Math.max(1, Number(sp.page) || 1);
+  // "none" = pedidos sem responsável; senão tem de ser um UUID válido
+  const assigneeId =
+    sp.assigneeId === "none" || UUID_RE.test(sp.assigneeId ?? "") ? sp.assigneeId : undefined;
+  const sort = sp.sort === "oldest" ? "oldest" : "newest";
+  const page = Math.min(1000, Math.max(1, Number(sp.page) || 1));
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
   const supabase = await createClient();
 
-  const [{ data: stores }, { data: categories }] = await Promise.all([
+  const [{ data: stores }, { data: categories }, { data: staff }] = await Promise.all([
     supabase.from("stores").select("id, name").eq("is_active", true).order("name"),
     supabase.from("categories").select("id, name").eq("is_active", true).order("name"),
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("role", ["TECHNICIAN", "MANAGER", "ADMIN"])
+      .order("full_name"),
   ]);
 
   let query = supabase
@@ -79,7 +90,7 @@ export default async function AllTicketsPage({
        assignee:profiles!tickets_assignee_id_fkey(full_name)`,
       { count: "exact" }
     )
-    .order("created_at", { ascending: false })
+    .order("created_at", { ascending: sort === "oldest" })
     .range(from, to);
 
   // sanitizeSearch remove , ( ) * % : que injectariam condições no filtro .or()
@@ -89,6 +100,8 @@ export default async function AllTicketsPage({
   if (priority) query = query.eq("priority", priority);
   if (storeId) query = query.eq("store_id", storeId);
   if (categoryId) query = query.eq("category_id", categoryId);
+  if (assigneeId === "none") query = query.is("assignee_id", null);
+  else if (assigneeId) query = query.eq("assignee_id", assigneeId);
 
   const { data, count } = await query;
   const rows = (data ?? []) as unknown as RawTicketRow[];
@@ -112,12 +125,19 @@ export default async function AllTicketsPage({
   const storeOptions = (stores ?? []).map((s) => ({ value: s.id, label: s.name }));
   const categoryOptions = (categories ?? []).map((c) => ({ value: c.id, label: c.name }));
 
+  const assigneeOptions = [
+    { value: "none", label: "Sem responsável" },
+    ...(staff ?? []).map((p) => ({ value: p.id, label: p.full_name || "Sem nome" })),
+  ];
+
   const qs = new URLSearchParams();
   if (q) qs.set("q", q);
   if (status) qs.set("status", status);
   if (priority) qs.set("priority", priority);
   if (storeId) qs.set("storeId", storeId);
   if (categoryId) qs.set("categoryId", categoryId);
+  if (assigneeId) qs.set("assigneeId", assigneeId);
+  if (sort !== "newest") qs.set("sort", sort);
 
   return (
     <PageContainer $size="lg">
@@ -126,7 +146,8 @@ export default async function AllTicketsPage({
       <TicketsFilterBar
         stores={storeOptions}
         categories={categoryOptions}
-        current={{ q, status, storeId, categoryId, priority }}
+        assignees={assigneeOptions}
+        current={{ q, status, storeId, categoryId, priority, assigneeId, sort }}
       />
 
       <Stack $gap="sm">
