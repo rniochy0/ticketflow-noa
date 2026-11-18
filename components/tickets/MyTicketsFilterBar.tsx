@@ -22,7 +22,7 @@ const Actions = styled.div`
   display: flex;
   gap: ${({ theme }) => theme.spacing.sm};
   align-items: center;
-`;
+`; 
 
 const statusOptions = [
   { value: "OPEN", label: "Aberto" },

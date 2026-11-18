@@ -92,6 +92,12 @@ export default async function Home() {
         {canCreate && (
           <NavCard href="/tickets" title="Meus pedidos" description="Pesquisar e filtrar" />
         )}
+        {canCreate && (
+          <NavCard href="/materiais" title="Pedir material" description="Toner, ratos, teclados, monitores" />
+        )}
+        {can(user.role, "ticket:handle") && (
+          <NavCard href="/materiais/gestao" title="Gestão de material" description="Aprovar, entregar, stock" />
+        )}
         {can(user.role, "ticket:view_all") && (
           <NavCard href="/it" title="Central do IT" description="Atender pedidos" />
         )}
@@ -101,6 +107,7 @@ export default async function Home() {
         {can(user.role, "admin:manage") && (
           <NavCard href="/admin" title="Administração" description="Sites, utilizadores, categorias" />
         )}
+        <NavCard href="/conta/perfil" title="O meu perfil" description="Dados da conta" />
         <NavCard href="/conta/password" title="Alterar password" />
       </CardGrid>
     </PageContainer>
