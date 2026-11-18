@@ -60,7 +60,14 @@ export type SendResult = { ok: true; id: string } | { ok: false; error: string }
 // { data, error }. Tratar só com try/catch faz as recusas (chave inválida,
 // remetente não verificado, destinatário não permitido) passarem em silêncio.
 // O resultado é devolvido para quem chama poder reagir (ex: a página de teste).
-async function send(to: string | string[], subject: string, html: string): Promise<SendResult> {
+type EmailAttachment = { filename: string; content: Buffer };
+
+async function send(
+  to: string | string[],
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<SendResult> {
   let recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
   if (recipients.length === 0) return { ok: false, error: "Sem destinatários." };
 
@@ -80,6 +87,7 @@ async function send(to: string | string[], subject: string, html: string): Promi
       to: recipients,
       subject,
       html,
+      ...(attachments?.length ? { attachments } : {}),
     });
     if (error || !data) {
       console.error("[email] o Resend recusou o envio:", subject, "→", error?.name, error?.message);
@@ -266,5 +274,91 @@ export async function notifyAccountChange(email: string, name: string, message: 
       "Alteração na tua conta",
       `<p>Olá ${escapeHtml(name || "")},</p><p>${escapeHtml(message)}</p>`
     )
+  );
+}
+
+// ---------- Pedidos de material ----------
+// Como nos tickets: só número, link e frases fixas. Nada de texto livre
+// (notas, motivo de rejeição) nos emails; esse conteúdo só se vê na aplicação.
+type SupplyRef = { id: string; number: string };
+
+function supplyWrapper(heading: string, bodyHtml: string, r: SupplyRef) {
+  return plainWrapper(
+    heading,
+    `<p style="color:#6b7280; margin-top:0;">${escapeHtml(r.number)}</p>${bodyHtml}`,
+    { label: "Abrir pedido", href: `${APP_URL}/materiais/${r.id}` }
+  );
+}
+
+export async function notifySupplyRequested(r: SupplyRef, recipients: string[], requesterName: string) {
+  await send(
+    recipients,
+    `Novo pedido de material ${r.number}`,
+    supplyWrapper(
+      "Pedido de material para aprovar",
+      `<p><strong>${escapeHtml(requesterName)}</strong> pediu material e precisa da tua aprovação.</p>`,
+      r
+    )
+  );
+}
+
+export async function notifySupplyDecision(r: SupplyRef, requesterEmail: string, approved: boolean) {
+  await send(
+    requesterEmail,
+    `${approved ? "Pedido de material aprovado" : "Pedido de material rejeitado"}: ${r.number}`,
+    supplyWrapper(
+      approved ? "O teu pedido de material foi aprovado" : "O teu pedido de material foi rejeitado",
+      approved
+        ? `<p>O IT vai preparar a entrega. Vais receber a guia de entrega por email.</p>`
+        : `<p>Abre o pedido para veres o motivo.</p>`,
+      r
+    )
+  );
+}
+
+export async function notifySupplyReadyToDeliver(r: SupplyRef, recipients: string[]) {
+  await send(
+    recipients,
+    `Material aprovado para entregar: ${r.number}`,
+    supplyWrapper("Pedido aprovado, pronto para entrega", `<p>Falta preparar e entregar o material.</p>`, r)
+  );
+}
+
+export async function notifySupplyDelivered(
+  r: SupplyRef,
+  requesterEmail: string,
+  guideNumber: string,
+  pdf?: Uint8Array
+) {
+  await send(
+    requesterEmail,
+    `Material entregue: ${r.number}`,
+    supplyWrapper(
+      "O teu material foi entregue",
+      `<p>Segue em anexo a guia de entrega <strong>${escapeHtml(guideNumber)}</strong>.</p>`,
+      r
+    ),
+    pdf ? [{ filename: `${guideNumber}.pdf`, content: Buffer.from(pdf) }] : undefined
+  );
+}
+
+export async function notifyLowStock(
+  recipients: string[],
+  items: { name: string; stock_qty: number; min_stock: number }[]
+) {
+  if (items.length === 0) return;
+  const list = items
+    .map(
+      (i) =>
+        `<li>${escapeHtml(i.name)}: <strong>${i.stock_qty}</strong> em stock (mínimo ${i.min_stock})</li>`
+    )
+    .join("");
+  await send(
+    recipients,
+    "Stock de material a acabar",
+    plainWrapper("Stock a acabar", `<ul>${list}</ul>`, {
+      label: "Ver stock",
+      href: `${APP_URL}/materiais/stock`,
+    })
   );
 }
