@@ -295,8 +295,8 @@ export async function notifySupplyRequested(r: SupplyRef, recipients: string[], 
     recipients,
     `Novo pedido de material ${r.number}`,
     supplyWrapper(
-      "Pedido de material para aprovar",
-      `<p><strong>${escapeHtml(requesterName)}</strong> pediu material e precisa da tua aprovação.</p>`,
+      "Novo pedido de material",
+      `<p><strong>${escapeHtml(requesterName)}</strong> pediu material. Abre o pedido para o tratar.</p>`,
       r
     )
   );
@@ -305,9 +305,9 @@ export async function notifySupplyRequested(r: SupplyRef, recipients: string[], 
 export async function notifySupplyDecision(r: SupplyRef, requesterEmail: string, approved: boolean) {
   await send(
     requesterEmail,
-    `${approved ? "Pedido de material aprovado" : "Pedido de material rejeitado"}: ${r.number}`,
+    `${approved ? "Pedido de material aceite" : "Pedido de material rejeitado"}: ${r.number}`,
     supplyWrapper(
-      approved ? "O teu pedido de material foi aprovado" : "O teu pedido de material foi rejeitado",
+      approved ? "O IT aceitou o teu pedido de material" : "O teu pedido de material foi rejeitado",
       approved
         ? `<p>O IT vai preparar a entrega. Vais receber a guia de entrega por email.</p>`
         : `<p>Abre o pedido para veres o motivo.</p>`,

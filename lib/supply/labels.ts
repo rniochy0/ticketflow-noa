@@ -1,6 +1,6 @@
 export const supplyStatusLabels = {
   PENDING: "Pendente",
-  APPROVED: "Aprovado",
+  APPROVED: "Aceite",
   REJECTED: "Rejeitado",
   DELIVERED: "Entregue",
   CANCELLED: "Cancelado",

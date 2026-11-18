@@ -90,7 +90,7 @@ export default async function SupplyRequestPage({ params }: { params: Promise<{ 
           </MutedText>
           {req.notes && <p style={{ margin: 0, overflowWrap: "anywhere" }}>{req.notes}</p>}
           {req.decision_note && (
-            <MutedText>Nota do gestor: {req.decision_note}</MutedText>
+            <MutedText>Nota do IT: {req.decision_note}</MutedText>
           )}
           {req.decided_at && <MutedText>Decidido em {fmt(req.decided_at)}</MutedText>}
           {req.delivered_at && <MutedText>Entregue em {fmt(req.delivered_at)}</MutedText>}
@@ -104,7 +104,7 @@ export default async function SupplyRequestPage({ params }: { params: Promise<{ 
               <Th>Artigo</Th>
               <Th>Referência</Th>
               <Th>Qtd</Th>
-              {isAgent && status === "APPROVED" && <Th>Em stock</Th>}
+              {isAgent && (status === "PENDING" || status === "APPROVED") && <Th>Em stock</Th>}
             </tr>
           </thead>
           <tbody>
@@ -115,7 +115,7 @@ export default async function SupplyRequestPage({ params }: { params: Promise<{ 
                 <Td>
                   {l.qty} {l.supply_items?.unit}
                 </Td>
-                {isAgent && status === "APPROVED" && (
+                {isAgent && (status === "PENDING" || status === "APPROVED") && (
                   <Td
                     style={
                       l.supply_items && l.supply_items.stock_qty < l.qty
@@ -147,8 +147,9 @@ export default async function SupplyRequestPage({ params }: { params: Promise<{ 
 
       <SupplyRequestActions
         requestId={req.id}
-        canDecide={can(user.role, "admin:manage") && status === "PENDING" && req.requester_id !== user.id}
-        canDeliver={isAgent && status === "APPROVED"}
+        canDecide={isAgent && status === "PENDING" && req.requester_id !== user.id}
+        canDeliver={isAgent && (status === "PENDING" || status === "APPROVED") && req.requester_id !== user.id}
+        ownRequest={req.requester_id === user.id && isAgent && (status === "PENDING" || status === "APPROVED")}
         canCancel={req.requester_id === user.id && status === "PENDING"}
         defaultReceiver={req.requester?.full_name ?? ""}
         stockIssue={stockIssue}

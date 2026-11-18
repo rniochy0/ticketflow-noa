@@ -18,7 +18,6 @@ import {
   recipientsExcept,
   notifySupplyRequested,
   notifySupplyDecision,
-  notifySupplyReadyToDeliver,
   notifySupplyDelivered,
   notifyLowStock,
 } from "@/lib/email/notifications";
@@ -75,8 +74,9 @@ export async function createSupplyRequest(
   const requestId = id as string;
   const number = await requestNumber(supabase, requestId);
   if (number) {
-    const managers = recipientsExcept(await emailsFor(supabase, requestId, "MANAGERS"), user.email);
-    await notifySupplyRequested({ id: requestId, number }, managers, user.fullName || user.email);
+    // Todo o IT (técnicos, gestores e admins) recebe o pedido para o tratar
+    const team = recipientsExcept(await emailsFor(supabase, requestId, "AGENTS"), user.email);
+    await notifySupplyRequested({ id: requestId, number }, team, user.fullName || user.email);
   }
 
   revalidateSupply();
@@ -96,13 +96,13 @@ export async function cancelSupplyRequest(requestId: string): Promise<SupplyActi
   return { ok: true };
 }
 
-// ---------- gestor: aprovar / rejeitar ----------
+// ---------- IT: aceitar / rejeitar (o gestor também pode, mas não é obrigatório) ----------
 export async function decideSupplyRequest(
   requestId: string,
   approve: boolean,
   note: string
 ): Promise<SupplyActionState> {
-  const user = await requirePermission("admin:manage");
+  await requirePermission("ticket:handle");
   const parsed = decideSchema.safeParse({ requestId, approve, note });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -120,12 +120,6 @@ export async function decideSupplyRequest(
     const requester = await emailsFor(supabase, ref.id, "REQUESTER");
     if (requester[0]) await notifySupplyDecision(ref, requester[0], parsed.data.approve);
 
-    if (parsed.data.approve) {
-      const agents = recipientsExcept(await emailsFor(supabase, ref.id, "AGENTS"), user.email).filter(
-        (e) => e.toLowerCase() !== requester[0]?.toLowerCase()
-      );
-      await notifySupplyReadyToDeliver(ref, agents);
-    }
   }
 
   revalidateSupply(parsed.data.requestId);
